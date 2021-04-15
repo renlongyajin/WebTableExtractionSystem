@@ -49,3 +49,4 @@ if __name__ == "__main__":
     threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
     tableExtractor = TableExtract()
     threading.Thread(target=tableExtractor.start).start()
+    print("加个测试")
