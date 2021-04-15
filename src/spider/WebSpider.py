@@ -5,13 +5,12 @@ from queue import Queue
 import requests.exceptions
 from pybloom_live import ScalableBloomFilter
 
-import app.gol as gol
-from IO.databaseInteraction.SQLite import SqlForSpider
-from IO.fileInteraction.FileIO import FileIO
-from spider.UrlExtractor import UrlExtractor
-from spider.UserAgent import USER_AGENTS
-from tools.algorithm.exceptionCatch import except_output
-from IO.databaseInteraction.MSSQL import SqlServerForSpider
+import src.app.gol as gol
+from src.IO.fileInteraction.FileIO import FileIO
+from src.spider.UrlExtractor import UrlExtractor
+from src.spider.UserAgent import USER_AGENTS
+from src.tools.algorithm.exceptionCatch import except_output
+from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
 
 
 # TODO:使用布隆过滤器优化爬虫记录集

@@ -3,10 +3,8 @@ import os
 
 from pybloom_live import ScalableBloomFilter
 
-from IO.fileInteraction.FileIO import FileIO
-from app import gol
-from tools.algorithm.changeCode import encode, decode
-import cgi
+from src.IO.fileInteraction.FileIO import FileIO
+from src.app import gol
 import pymssql
 
 """
@@ -145,15 +143,15 @@ class SqlServerForSpider:
         FileIO.writePkl(urlBloomPath, urlBloom)  # 重置
 
         # 删除 实体三元组csv文件，关系三元组csv文件
-        TriadFilePath = gol.get_value('TriadFilePath')
-        entityTriadPath = os.path.join(TriadFilePath, 'entityTriad.csv')
-        relationshipTriadPath = os.path.join(TriadFilePath, 'relationshipTriad.csv')
-        if os.path.exists(entityTriadPath):
-            os.remove(entityTriadPath)
-        if os.path.exists(relationshipTriadPath):
-            os.remove(relationshipTriadPath)
+        entityAndRelationshipPath = gol.get_value('entityAndRelationshipPath')
+        entityPath = os.path.join(entityAndRelationshipPath, 'entity.csv')
+        relationshipPath = os.path.join(entityAndRelationshipPath, 'relationship.csv')
+        if os.path.exists(entityPath):
+            os.remove(entityPath)
+        if os.path.exists(relationshipPath):
+            os.remove(relationshipPath)
 
-        entityPath = f"{TriadFilePath}\\entity.json"
+        entityPath = f"{entityAndRelationshipPath}\\entity.json"
         if os.path.exists(entityPath):
             os.remove(entityPath)
 

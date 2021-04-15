@@ -1,23 +1,19 @@
 import copy
-import os
 import time
 from pprint import pprint
 from queue import Queue
 import re
-from os.path import dirname, abspath
-from urllib.parse import unquote
 
 from bs4 import BeautifulSoup, Comment
 from bs4.element import Tag, NavigableString
 from pyhanlp import HanLP  # 使用前导入 HanLP工具
 
-import app.gol as gol
-from IO.databaseInteraction.SQLite import SqlForSpider
-from IO.databaseInteraction.MSSQL import SqlServerForSpider
-from IO.fileInteraction.FileIO import FileIO
-from spider.WebSpider import WebSpider
-from tableExtract.table import changeTableTig2Table, Table, TableItem
-from tools.algorithm.exceptionCatch import except_output
+import src.app.gol as gol
+from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
+from src.IO.fileInteraction.FileIO import FileIO
+from src.spider.WebSpider import WebSpider
+from src.tableExtract.table import changeTig2Table, Table, TableItem
+from src.tools.algorithm.exceptionCatch import except_output
 
 
 class TableExtract:
@@ -32,7 +28,7 @@ class TableExtract:
     def test(self):
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
-        _TriadFilePath = gol.get_value("TriadFilePath")
+        entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # 这是一个测试
         tempUrl = [
             r"https://baike.baidu.com/item/%E5%B2%B3%E9%A3%9E/127844",  # 岳飞
@@ -49,14 +45,14 @@ class TableExtract:
                 entityTriad, relationshipTriad = table.extractEntityRelationship()
                 pprint(relationshipTriad)
                 pprint(entityTriad)
-                FileIO.writeTriad2csv(f"{_TriadFilePath}\\entityTriadTest.csv", entityTriad, mode="a+")
-                FileIO.writeTriad2csv(f"{_TriadFilePath}\\relationshipTriadTest.csv", entityTriad, mode="a+")
+                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entityTriadTest.csv", entityTriad, mode="a+")
+                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationshipTriadTest.csv", entityTriad, mode="a+")
 
     @except_output()
     def start(self):
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
-        _TriadFilePath = gol.get_value("TriadFilePath")
+        entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # self.test()
         maxSize = 200
         pendingQueue = Queue(maxSize)
@@ -85,12 +81,12 @@ class TableExtract:
                             relationship = res[1]
                             pprint(entity)
                             pprint(relationship)
-                            # FileIO.writeTriad2csv(f"{_TriadFilePath}\\entity.csv", entity, mode="a+")
+                            # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entity.csv", entity, mode="a+")
                             if relationship:
-                                FileIO.writeTriad2csv(f"{_TriadFilePath}\\relationship.csv", relationship,
+                                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationship.csv", relationship,
                                                       mode="a+")
                             if entity:
-                                FileIO.write2Json(entity, f"{_TriadFilePath}\\entity.json", "a+", changeLine=True)
+                                FileIO.write2Json(entity, f"{entityAndRelationshipPath}\\entity.json", "a+", changeLine=True)
 
                 if pendingQueue.qsize() < int(maxSize / 2):
                     for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(maxSize / 2)):
@@ -113,7 +109,7 @@ class TableExtract:
         for table in tagTable:
             caption, prefix = self.getCaption(table)
             if self.throughHeuristicRule(table):
-                aTable = changeTableTig2Table(table, caption, prefix)
+                aTable = changeTig2Table(table, caption, prefix)
                 _tableList.append(aTable)
         return _tableList
 

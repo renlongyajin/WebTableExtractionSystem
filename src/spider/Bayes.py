@@ -11,10 +11,10 @@ from sklearn import naive_bayes as bayes
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import train_test_split
 
-from IO.fileInteraction.FileIO import FileIO
-from app import gol
-from spider.WebSpider import WebSpider
-from tableExtract.tableExtractor import TableExtract
+from src.IO.fileInteraction.FileIO import FileIO
+from src.app import gol
+from src.spider.WebSpider import WebSpider
+from src.tableExtract.tableExtractor import TableExtract
 
 
 class Bayes:

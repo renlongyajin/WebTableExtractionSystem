@@ -1,6 +1,5 @@
 import sqlite3
-import os
-from tools.algorithm.changeCode import encode, decode
+from src.tools.algorithm.changeCode import encode, decode
 
 
 class SqlForSpider:

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import OrderedDict
+from copy import deepcopy
 
 
 def init():  # 初始化
@@ -18,3 +19,11 @@ def get_value(key: str, defValue=None):
         return __global_dict[key]
     except KeyError:
         print(f"该项目中不存在全局变量:{key}")
+
+
+def getGlobalDictCopy() -> dict:
+    """
+    获得当前全局变量的复制字典
+    :return:
+    """
+    return deepcopy(__global_dict)

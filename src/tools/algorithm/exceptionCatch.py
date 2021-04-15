@@ -4,7 +4,7 @@ from functools import wraps
 import requests.exceptions
 
 # 异常输出
-from app import gol
+from src.app import gol
 
 
 def except_output(msg='异常信息'):

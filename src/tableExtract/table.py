@@ -1,6 +1,6 @@
 import json
 import os
-from copy import deepcopy, copy
+from copy import deepcopy
 
 from bs4 import Tag
 from bs4 import NavigableString
@@ -16,9 +16,9 @@ from docx.shared import Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
-from IO.fileInteraction.FileIO import FileIO
-from app import gol
-from tools.algorithm.exceptionCatch import except_output
+from src.IO.fileInteraction.FileIO import FileIO
+from src.app import gol
+from src.tools.algorithm.exceptionCatch import except_output
 
 
 class TableItem:
@@ -495,35 +495,29 @@ class Table:
         doc.save(filepath)
 
     @except_output()
-    def __table2DictList(self) -> list:
+    def __table2DictList(self, filtration=False, deletePersonName=False) -> list:
         """
-        表格转化为字典列表
+        表格转化为字典列表,默认为横向展开
         :return:
         """
         if self.__isNormal and self.__isCorrect:
+            if deletePersonName:
+                personNameIndex = self.__getPersonNameIndex()
+                self.deleteOneCol(personNameIndex)
             jsonStrList = []
             direction = self.getUnfoldDirection()
             lineNum = self.discriminatePropertyLineNum(direction)
             if lineNum >= 1:
-                if direction == "ROW":
-                    heads = [str(head.content) for head in self.getRowAt(lineNum - 1)]
-                    for i in range(lineNum, self.rowNumber):
-                        jsonStr = {}
-                        for j in range(self.colNumber):
-                            item = self.Table[i][j]
-                            jsonStr[heads[j]] = str(item.content)
-                        jsonStrList.append(jsonStr)
-
-                elif direction == "COL":
-                    heads = [str(head.content) for head in self.getColAt(lineNum - 1)]
-                    for j in range(lineNum, self.colNumber):
-                        jsonStr = {}
-                        for i in range(self.rowNumber):
-                            item = self.Table[i][j]
-                            jsonStr[heads[i]] = str(item.content)
-                        jsonStrList.append(jsonStr)
-                else:
-                    raise Exception(f"不存在该展开方向<{direction}>")
+                heads = [str(head.content) for head in self.getRowAt(lineNum - 1)]
+                for i in range(lineNum, self.rowNumber):
+                    jsonStr = {}
+                    for j in range(self.colNumber):
+                        item = self.Table[i][j]
+                        if filtration:
+                            if str(item.content).isspace() or len(str(item.content)) == 0:
+                                continue
+                        jsonStr[heads[j]] = str(item.content)
+                    jsonStrList.append(jsonStr)
                 return jsonStrList
         else:
             raise Exception("该表格不规范，无法写成json串")
@@ -781,7 +775,7 @@ class Table:
             for i in range(1, len(propertyRelationshipList)):
                 self.deleteOneCol(propertyNameList.index(propertyRelationshipList[i]))
             propertyNameList = self.getPropertyList(isPropertyName=True)  # 删除属性列之后更新一下属性列表
-        personNameIndex = self.getPersonNameIndex()
+        personNameIndex = self.__getPersonNameIndex()
         if personNameIndex != -1:
             personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
             index = propertyNameList.index(propertyRelationshipList[0])
@@ -801,7 +795,7 @@ class Table:
         """
         relationship = []
         if self.name and self.prefix:
-            personNameIndex = self.getPersonNameIndex()
+            personNameIndex = self.__getPersonNameIndex()
             if personNameIndex != -1:
                 personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
                 for i in range(len(personNameList)):
@@ -814,12 +808,12 @@ class Table:
         将实体表转化为与人物有关的实体
         :return:
         """
+        entity = []
+        personNameIndex = self.__getPersonNameIndex()
+        if personNameIndex == -1:
+            return entity
+        personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
         if getEntityTriad:
-            entity = []
-            personNameIndex = self.getPersonNameIndex()
-            if personNameIndex == -1:
-                return entity
-            personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
             self.deleteOneCol(personNameIndex)  # 删除人名列表
             if self.colNumber >= 1:
                 propertyIndex = self.discriminatePropertyLineNum(self.getUnfoldDirection()) - 1
@@ -831,10 +825,17 @@ class Table:
                         # 添加三元组
                         self.__notNullAppend(entity, personNameList[i], propertyNameList[j], content)
         else:
-            entity = self.__table2DictList()
+            dictList = self.__table2DictList(filtration=True,deletePersonName=True)
+            personNameList = self.__clearPersonNameList(personNameList)
+            if len(personNameList) == len(dictList):
+                for i in range(len(personNameList)):
+                    if len(personNameList[i]) == 0 or str(personNameList[i]).isspace():  # 姓名为空则跳过
+                        continue
+                    entity.append([personNameList[i], dictList[i]])
+
         return entity
 
-    def getPersonNameIndex(self):
+    def __getPersonNameIndex(self):
         """
         返回人名所在的列的索引
         :return:
@@ -861,6 +862,17 @@ class Table:
                 break
             index += 1
         return personNameIndex
+
+    @staticmethod
+    def __clearPersonNameList(personNameList: list):
+        punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+        personNameList.pop(0)  # 删除第一个元素
+        for i in range(len(personNameList)):
+            personNameList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "",
+                                       personNameList[i])  # 去除括号
+            personNameList[i] = str(personNameList[i]).split("/")[0]
+            personNameList[i] = re.sub(punctuation, "", personNameList[i])
+        return personNameList
 
     def clearTable(self):
         """
@@ -1010,7 +1022,7 @@ class TableFeatures:
         self.itemLengthStandardDeviation = 0  # 单元格长度标准偏差
 
 
-def changeTableTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
+def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
     """
     将tag标签转化为table数据结构
     :param prefix: 前缀
