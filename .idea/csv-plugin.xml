@@ -45,6 +45,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\src\tableExtract\TypeTree.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\start.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\tableExtract\tableExtractor.py">
           <value>
             <Attribute>

@@ -3,16 +3,18 @@ import time
 from pprint import pprint
 from queue import Queue
 import re
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup, Comment
 from bs4.element import Tag, NavigableString
+from docx import Document
 from pyhanlp import HanLP  # 使用前导入 HanLP工具
 
 import src.app.gol as gol
 from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
 from src.IO.fileInteraction.FileIO import FileIO
 from src.spider.WebSpider import WebSpider
-from src.tableExtract.table import changeTig2Table, Table, TableItem
+from src.tableExtract.table import changeTig2Table, Table, TableItem, changeWordTable2Table
 from src.tools.algorithm.exceptionCatch import except_output
 
 
@@ -31,29 +33,38 @@ class TableExtract:
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # 这是一个测试
         tempUrl = [
-            r"https://baike.baidu.com/item/%E5%B2%B3%E9%A3%9E/127844",  # 岳飞
+            r"https://baike.baidu.com/item/%E8%80%81%E8%88%8D",  # 老舍
+            r"https://baike.baidu.com/item/%E6%AD%A6%E5%88%99%E5%A4%A9/61872"
         ]
         for url in tempUrl:
             html = WebSpider.getHtml(url)
+            aList = url.split('/')
+            name = aList[- 1]
+            name = unquote(name)
             _tableList = self.getTable(html)
             for table in _tableList:
+                table.writeTable2Doc(f"{_tableDocPath}\\{name}.docx")
                 table = table.extendTable()
-                table.writeTable2Doc(f"{_tableDocPath}\\岳飞展开.docx")
-                if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
-                    table = table.flip()
-                table.clearTable()
-                entityTriad, relationshipTriad = table.extractEntityRelationship()
-                pprint(relationshipTriad)
-                pprint(entityTriad)
-                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entityTriadTest.csv", entityTriad, mode="a+")
-                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationshipTriadTest.csv", entityTriad, mode="a+")
+                table.writeTable2Doc(f"{_tableDocPath}\\{name}展开.docx")
+                # if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
+                #     table = table.flip()
+                # table.clearTable()
+                # entityTriad, relationshipTriad = table.extractEntityRelationship()
+                # pprint(relationshipTriad)
+                # pprint(entityTriad)
+                # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entityTriadTest.csv", entityTriad, mode="a+")
+                # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationshipTriadTest.csv", entityTriad, mode="a+")
+
+    def test1(self):
+        tableList = self.extractWordTable()
+        for table in tableList:
+            table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\test.docx")
 
     @except_output()
     def start(self):
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
-        # self.test()
         maxSize = 200
         pendingQueue = Queue(maxSize)
         sql = SqlServerForSpider()
@@ -68,12 +79,15 @@ class TableExtract:
                 dataTuple = pendingQueue.get_nowait()
                 url = dataTuple[0]
                 html = dataTuple[1]
+                last = unquote(url.split('/')[-1])
+                name = unquote(url.split('/')[-2]) if last.isdigit() else last
                 _tableList = self.getTable(html)
                 for table in _tableList:
                     table = table.extendTable()
                     if table.isNormal() and table.isCorrect():
                         if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
                             table = table.flip()
+                        table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{name}__规整后.docx")
                         table.clearTable()
                         res = table.extractEntityRelationship()
                         if res:
@@ -86,7 +100,8 @@ class TableExtract:
                                 FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationship.csv", relationship,
                                                       mode="a+")
                             if entity:
-                                FileIO.write2Json(entity, f"{entityAndRelationshipPath}\\entity.json", "a+", changeLine=True)
+                                FileIO.write2Json(entity, f"{entityAndRelationshipPath}\\entity.json", "a+",
+                                                  changeLine=True)
 
                 if pendingQueue.qsize() < int(maxSize / 2):
                     for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(maxSize / 2)):
@@ -165,12 +180,12 @@ class TableExtract:
                 else:
                     if len(_previous.contents) == 1:
                         if isinstance(_previous.contents[0], NavigableString):
-                            temp = _previous
-                            if 0 < len(temp) < 8:
+                            temp = _previous.contents[0]
+                            if 0 < len(temp) < 20:
                                 _caption = temp
                         else:
                             temp = _previous.contents[0]
-                            if 0 < len(temp) < 8:
+                            if 0 < len(temp) < 20:
                                 _caption = temp.text
         return _caption, _prefix
 
@@ -328,6 +343,19 @@ class TableExtract:
         tablePropertyList = table.getPropertyList()
 
         pass
+
+    @staticmethod
+    def extractWordTable() -> list:
+        tableDocPath = gol.get_value("tableDocPath")
+        docPath = f"{tableDocPath}\\老舍.docx"
+        try:
+            doc = Document(docPath)
+            tableList = []
+            for table in doc.tables:
+                tableList.append(changeWordTable2Table(table))
+            return tableList
+        except Exception as e:
+            print("读取 Word 文件失败", e)
 
 
 def deep(tag: Tag):

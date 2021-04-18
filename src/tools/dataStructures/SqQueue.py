@@ -1,5 +1,4 @@
 # 循环队列
-# TODO:将这个数据结构用Python自带的queue替换  import queue
 class SqQueue(object):
     def __init__(self, maxsize):
         self.queue = [None] * (maxsize + 1)

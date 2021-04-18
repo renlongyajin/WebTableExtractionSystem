@@ -1,7 +1,9 @@
 import json
 import os
 from copy import deepcopy
+from pprint import pprint
 
+import docx
 from bs4 import Tag
 from bs4 import NavigableString
 import numpy as np
@@ -9,6 +11,7 @@ import re
 from typing import Tuple
 
 from docx import Document
+from docx.table import Table as DocTable
 from pyhanlp import HanLP
 from treelib import Tree
 from docx.oxml.ns import qn
@@ -18,100 +21,8 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 
 from src.IO.fileInteraction.FileIO import FileIO
 from src.app import gol
+from src.tableExtract.TableItem import TableItem
 from src.tools.algorithm.exceptionCatch import except_output
-
-
-class TableItem:
-    """
-    表格单元类
-    """
-
-    def __init__(self, content, rowLoc, rowspan, colLoc, colspan,
-                 href=None, imgSrc=None, type_=None, tagName=None):
-        if href is None:
-            href = {}
-        if imgSrc is None:
-            imgSrc = []
-        self.content = content  # 表格单元内容
-        self.rowLoc = rowLoc  # 表格单元的行位置
-        self.rowspan = rowspan  # 表格单元的行占格
-        self.colLoc = colLoc  # 表格单元的列位置
-        self.colspan = colspan  # 表格单元的列占格
-        self.absoluteRow = self.rowLoc  # 表格单元绝对行位置
-        self.absoluteCol = self.colLoc  # 表格二单元的绝对列位置
-        self.href = href  # 表格单元中含有的链接
-        self.img = imgSrc  # 表格单元的图像Src
-        self.type_ = type_  # 表格单元的类型
-        self.wordType = None  # 表格单词类型
-        self.tagName = tagName  # 表格单元的标签名
-
-    def getTableItemType(self) -> str:
-        """
-        求得表格单元的类型
-        :return: 返回类型值
-        """
-        if self.type_:
-            return self.type_
-        # TODO:将返回的字符串变成枚举类型
-        typeSymbol = re.compile(r"^[\W]*$")  # 匹配符号类型
-        typeNumber = re.compile(r"^([\$\uFFE5]?)(-?)(\d+)(\.\d+)?([\u4e00-\u9fa5\%]?)$")  # 匹配数字类型
-        typeNumLess0 = re.compile(r"^((-\d+(\.\d+)?)|(0+(\.0+)?))$")  # 小于等于0的数字范围
-        typeNum0_1 = re.compile(r"^0(\.\d+)?$")  # 0-1的数字范围
-        typeNumGreater1 = re.compile(r"^(([1-9]\d+)|[1-9])(\.[\d]*)?$")  # 大于1的数字范围
-        typeChinese = re.compile(r"[\u4e00-\u9fa5]+$")  # 匹配纯汉字
-        typeEnglish = re.compile(r"[A-Za-z]+$")  # 匹配英语
-        typeEngLowCase = re.compile(r"[a-z]+$")  # 匹配英语小写
-        typeEngUpperCase = re.compile(r"[A-Z]+$")  # 匹配英语大写
-        typeCharacterAndNum = re.compile(r"[\u4e00-\u9fa5A-Za-z0-9]+$")  # 字符数字类型表达式
-        typeHypeLink = re.compile(r"(https?|ftp|file)://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]")
-        content = str(self.content).strip()
-        if len(self.img) > 0:
-            self.type_ = "图片"
-        elif re.match(typeHypeLink, content):
-            self.type_ = "超链接"
-        elif re.match(typeSymbol, content):
-            self.type_ = "标点类型"
-        elif re.match(typeCharacterAndNum, content):
-            if re.match(typeNumber, content):  # 数字类型
-                if re.match(typeNumLess0, content):
-                    self.type_ = "<=0"
-                elif re.match(typeNum0_1, content):
-                    self.type_ = "0-1"
-                elif re.match(typeNumGreater1, content):
-                    self.type_ = ">=1"
-                else:
-                    self.type_ = "数字类型"
-            else:  # 字符类型
-                if re.match(typeChinese, content):
-                    self.type_ = "中文"
-                elif re.match(typeEnglish, content):
-                    if re.match(typeEngUpperCase, content):
-                        self.type_ = "大写"
-                    elif re.match(typeEngLowCase, content):
-                        self.type_ = "小写"
-                    else:
-                        self.type_ = "大小写混合"
-                else:
-                    self.type_ = "字符类型"
-        else:
-            self.type_ = "其他类型"
-        return self.type_
-
-    def getTableItemWordType(self) -> str:
-        otherConfigurationPath = gol.get_value("otherConfigurationPath")
-        if self.wordType:
-            return self.wordType
-        segment = HanLP.newSegment()
-        segment.enableNameRecognize(True)
-        result = list(segment.seg(str(self.content)))
-        typeList = [str(pair.nature) for pair in result]
-        wordDict = FileIO.readPkl(f"{otherConfigurationPath}\\wordMap.pkl")
-        numSum = 0
-        for type_ in typeList:
-            numSum += wordDict[type_]
-        typeString = "".join(typeList)
-        self.wordType = typeString
-        return self.wordType
 
 
 class Table:
@@ -124,11 +35,11 @@ class Table:
         self.rowNumber = rowNumber  # 表格的行数
         self.colNumber = colNumber  # 表格的列数
         if table is None:  # 表格所在的二维数组
-            self.Table = [[TableItem(content=0, rowLoc=j, rowspan=1, colLoc=i, colspan=1)
-                           for i in range(self.colNumber)]
-                          for j in range(self.rowNumber)]
+            self.cell = [[TableItem(content=0, rowLoc=j, rowspan=1, colLoc=i, colspan=1)
+                          for i in range(self.colNumber)]
+                         for j in range(self.rowNumber)]
         else:
-            self.Table = table
+            self.cell = table
         self.name = name  # 表格的名称
         self.prefix = None  # 表格的前驱
         self.unfoldDirection = unfoldDirection  # 表格的展开方向
@@ -150,11 +61,11 @@ class Table:
         :return:
         """
         positionList = []
-        for i in range(len(self.Table)):
+        for i in range(len(self.cell)):
             colIndex = 0
             before = 0  # 记录从这一行开始，到现在，之前有几个元素进入队列
-            for j in range(len(self.Table[i])):
-                col = self.Table[i][j]
+            for j in range(len(self.cell[i])):
+                col = self.cell[i][j]
                 colStart = 0
                 for position in positionList:
                     colStart += position[1]
@@ -177,7 +88,7 @@ class Table:
         :return:
         """
         colLenList = []
-        for rows in self.Table:
+        for rows in self.cell:
             colLen = 0
             for col in rows:
                 colLen += col.colspan
@@ -218,7 +129,7 @@ class Table:
         newTable = Table(rowNumber=self.colNumber, colNumber=self.rowNumber, name=self.name)
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
-                newTable.Table[j][i] = deepcopy(self.Table[i][j])
+                newTable.cell[j][i] = deepcopy(self.cell[i][j])
         if self.unfoldDirection == "ROW":
             newTable.unfoldDirection = "COL"
         if self.unfoldDirection == "COL":
@@ -241,7 +152,7 @@ class Table:
         """
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
-                self.Table[i][j].content = str(self.Table[i][j].content)
+                self.cell[i][j].content = str(self.cell[i][j].content)
         return self
 
     def getLengthCharacter(self):
@@ -252,7 +163,7 @@ class Table:
         data = np.zeros((self.rowNumber, self.colNumber), dtype=int)
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
-                data[i, j] = len(str(self.Table[i][j].content))
+                data[i, j] = len(str(self.cell[i][j].content))
 
         rowVarianceMean = np.mean(np.std(data, axis=0))  # 行方差均值
         colVarianceMean = np.mean(np.std(data, axis=1))  # 列方差均值
@@ -277,7 +188,7 @@ class Table:
         """
         if self.__isNormal and self.__isCorrect:
             if 0 <= row < self.rowNumber:
-                return self.Table[row]
+                return self.cell[row]
             else:
                 raise Exception(f"row={row},此时超出表格索引范围")
         else:
@@ -293,7 +204,7 @@ class Table:
             if 0 <= col < self.colNumber:
                 res = []
                 for row in range(self.rowNumber):
-                    res.append(self.Table[row][col])
+                    res.append(self.cell[row][col])
                 return res
             else:
                 raise Exception(f"col={col},此时超出表格索引范围")
@@ -306,7 +217,7 @@ class Table:
         :return: 扩展后的表格
         """
         # 行扩展
-        for rows in self.Table:
+        for rows in self.cell:
             before = 0
             for item in rows:
                 if item.rowspan > 1:
@@ -316,11 +227,11 @@ class Table:
                         newItem = deepcopy(item)
                         newItem.rowLoc = row
                         newItem.absoluteRow = row
-                        self.Table[row].insert(before, newItem)
+                        self.cell[row].insert(before, newItem)
                     # before += 1
                 before += 1
         # 列扩展
-        for rows in self.Table:
+        for rows in self.cell:
             for item in rows:
                 if item.colspan > 1:
                     colspan = item.colspan
@@ -329,7 +240,7 @@ class Table:
                         newItem2 = deepcopy(item)
                         newItem2.colLoc = col
                         newItem2.absoluteCol = col
-                        self.Table[item.absoluteRow].insert(item.absoluteCol, newItem2)
+                        self.cell[item.absoluteRow].insert(item.absoluteCol, newItem2)
         self.initialNormal()
         self.initialCorrect()
         return self
@@ -368,7 +279,7 @@ class Table:
         if direction == "ROW":
             for i in range(self.rowNumber):
                 for j in range(self.colNumber):
-                    item = self.Table[i][j]
+                    item = self.cell[i][j]
                     if item.tagName != "th":
                         return res
                 res += 1
@@ -376,7 +287,7 @@ class Table:
         elif direction == "COL":
             for j in range(self.colNumber):
                 for i in range(self.rowNumber):
-                    item = self.Table[i][j]
+                    item = self.cell[i][j]
                     if item.tagName != "th":
                         return res
                 res += 1
@@ -395,7 +306,7 @@ class Table:
         if direction == "ROW":
             for i in range(self.rowNumber):
                 for j in range(self.colNumber):
-                    item = self.Table[i][j]
+                    item = self.cell[i][j]
                     if item.type_ not in characterTypeSet:
                         return res
                 res += 1
@@ -404,7 +315,7 @@ class Table:
         elif direction == "COL":
             for i in range(self.colNumber):
                 for j in range(self.rowNumber):
-                    item = self.Table[j][i]
+                    item = self.cell[j][i]
                     if item.type_ not in characterTypeSet:
                         return res
                 res += 1
@@ -424,7 +335,7 @@ class Table:
         if direction == "ROW":
             for i in range(self.rowNumber):
                 for j in range(self.colNumber):
-                    item = self.Table[i][j]
+                    item = self.cell[i][j]
         elif direction == "COL":
             pass
         else:
@@ -447,7 +358,7 @@ class Table:
         初始化表格每一个单元的类型，如“你好”就是中文，“123”就是数字>1，“hello”就是英文
         :return:
         """
-        for row in self.Table:
+        for row in self.cell:
             for item in row:
                 item.getTableItemType()
 
@@ -456,7 +367,7 @@ class Table:
         获得单词类型，例如"水果"就是名词，“跑步”就是动词，如果是句子就会划分为多个词
         :return:
         """
-        for row in self.Table:
+        for row in self.cell:
             for item in row:
                 item.getTableItemWordType()
 
@@ -474,24 +385,31 @@ class Table:
         # 设置字体样式
         doc.styles['Normal'].font.name = u'宋体'
         doc.styles['Normal'].element.rPr.rFonts.set(qn('w:eastAsia'), u'宋体')
-        # ------添加文档标题-------
-        paragraph = doc.add_paragraph()
-        run = paragraph.add_run(self.name)
-        font = run.font
-        # 设置字体大小
-        font.size = Pt(12)
-        # 设置水平居中
-        paragraph_format = paragraph.paragraph_format
-        paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        addTable = doc.add_table(rows=self.rowNumber, cols=self.colNumber, style="Table Grid")
+        # # ------添加文档标题-------
+        # paragraph = doc.add_paragraph()
+        # run = paragraph.add_run(self.name)
+        # font = run.font
+        # # 设置字体大小
+        # font.size = Pt(12)
+        # # 设置水平居中
+        # paragraph_format = paragraph.paragraph_format
+        # paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        addTable = doc.add_table(rows=self.rowNumber + 1, cols=self.colNumber, style="Table Grid")
+        # 添加表格标题
+        addTable.cell(0, 0).merge(addTable.cell(0, self.colNumber - 1))
+        addTable.cell(0, 0).text = str(self.name)
         addTable.cell(0, 0).paragraphs[0].paragraph_format.alignment = WD_TABLE_ALIGNMENT.CENTER  # 第一行表格水平居中
         self.getAbsolutePosition()
-        for rowData in self.Table:
+        for rowData in self.cell:
             for item in rowData:
-                addTable.cell(item.absoluteRow, item.absoluteCol).merge(
-                    addTable.cell(item.absoluteRow + item.rowspan - 1,
+                addTable.cell(item.absoluteRow + 1, item.absoluteCol).merge(
+                    addTable.cell(item.absoluteRow + item.rowspan,
                                   item.absoluteCol + item.colspan - 1))
-                addTable.cell(item.absoluteRow, item.absoluteCol).text = item.content
+                if item.content is None:
+                    addTable.cell(item.absoluteRow + 1, item.absoluteCol).text = "未命名表格"
+                else:
+                    addTable.cell(item.absoluteRow + 1, item.absoluteCol).text = item.content
+        paragraph = doc.add_paragraph()
         doc.save(filepath)
 
     @except_output()
@@ -512,7 +430,7 @@ class Table:
                 for i in range(lineNum, self.rowNumber):
                     jsonStr = {}
                     for j in range(self.colNumber):
-                        item = self.Table[i][j]
+                        item = self.cell[i][j]
                         if filtration:
                             if str(item.content).isspace() or len(str(item.content)) == 0:
                                 continue
@@ -561,7 +479,7 @@ class Table:
             if self.colNumber != 2:
                 return False
         firstProperty = {"中文名", "本名"}
-        if str(self.Table[0][0].content) in firstProperty:  # 判断第一行第一列的属性名
+        if str(self.cell[0][0].content) in firstProperty:  # 判断第一行第一列的属性名
             self.fusionJsonWord(f"{gol.get_value('personTablePath')}\\personInfo.json")  # 融合属性
             return True
 
@@ -633,7 +551,7 @@ class Table:
         if self.__isCorrect and self.__isNormal:
             if index < 0 or index >= self.rowNumber:
                 raise Exception(f"要删除的行<{index}>超出行数范围<0,{self.rowNumber - 1}>")
-            del self.Table[index]
+            del self.cell[index]
             self.rowNumber -= 1
             self.getAbsolutePosition()
             self.initialPropertyList()
@@ -650,7 +568,7 @@ class Table:
             if index < 0 or index >= self.colNumber:
                 raise Exception(f"要删除的列<{index}>超出列数范围<0,{self.colNumber - 1}>")
             for i in range(self.rowNumber):
-                del self.Table[i][index]
+                del self.cell[i][index]
             self.getAbsolutePosition()
             self.colNumber -= 1
             self.initialPropertyList()
@@ -659,7 +577,7 @@ class Table:
 
     def __getPropertyRelationshipList(self):
         """
-        判断当前表是否为属性关系表
+        获取属性关系列表，并且把与人物有关的属性由高到低排序
         :return:
         """
         personTablePath = gol.get_value('personTablePath')
@@ -821,11 +739,11 @@ class Table:
                 propertyLine = self.discriminatePropertyLineNum(self.getUnfoldDirection())  # 属性行所占的行数
                 for i in range(propertyLine, self.rowNumber):
                     for j in range(propertyIndex, self.colNumber):
-                        content = str(self.Table[i][j].content)
+                        content = str(self.cell[i][j].content)
                         # 添加三元组
                         self.__notNullAppend(entity, personNameList[i], propertyNameList[j], content)
         else:
-            dictList = self.__table2DictList(filtration=True,deletePersonName=True)
+            dictList = self.__table2DictList(filtration=True, deletePersonName=True)
             personNameList = self.__clearPersonNameList(personNameList)
             if len(personNameList) == len(dictList):
                 for i in range(len(personNameList)):
@@ -911,8 +829,8 @@ class Table:
         # 将表格中的单纯的符号单元转化为空格
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
-                if self.Table[i][j].getTableItemType() == "标点类型":
-                    self.Table[i][j].content = ""
+                if self.cell[i][j].getTableItemType() == "标点类型":
+                    self.cell[i][j].content = ""
 
 
 class TypeTree:
@@ -949,7 +867,7 @@ class TypeTree:
         """
         rowTypeCharacter = 0
         colTypeCharacter = 0
-        n = min(table.rowNumber, table.colNumber)
+        # n = min(table.rowNumber, table.colNumber)
         # for i in range(n - 1):
         #     rowTypeCharacter += self.VType(table.getRowAt(i), table.getRowAt(n - 1))
         #     colTypeCharacter += self.VType(table.getColAt(i), table.getColAt(n - 1))
@@ -1010,18 +928,6 @@ class TypeTree:
         return res / m
 
 
-class TableFeatures:
-    """表格特征"""
-
-    def __init__(self):
-        self.averageColNum = 0  # 平均列数
-        self.averageRowNum = 0  # 平均行数
-        self.colNumStandardDeviation = 0  # 列数标准偏差
-        self.rowNumStandardDeviation = 0  # 行数标准偏差
-        self.averageItemLength = 0  # 平均单元格长度
-        self.itemLengthStandardDeviation = 0  # 单元格长度标准偏差
-
-
 def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
     """
     将tag标签转化为table数据结构
@@ -1032,7 +938,7 @@ def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
     """
 
     table = Table()
-    table.Table = []
+    table.cell = []
     rowMaxSize = 0
     colLenList = []
     colIndex = rowIndex = 0
@@ -1070,7 +976,7 @@ def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
             tableItem = TableItem(content, rowIndex, rowspan, colIndex, colspan, href, imgSrc, tagName=tagName)
             innerList.append(tableItem)
         colLenList.append(colSize)
-        table.Table.append(innerList)
+        table.cell.append(innerList)
         rowMaxSize += 1
     table.colNumber = max(colLenList)
     table.rowNumber = rowMaxSize
@@ -1080,6 +986,25 @@ def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
     table.initialTableItemsType()  # 初始化表格单元的类型
     # table.initialTableItemWordType()  # 初始化表格单词类型
     return table
+
+
+def changeWordTable2Table(table: DocTable) -> Table:
+    caption = str(table.rows[0].cells[0].text)
+    maxColNum = 0
+    rowList = []
+    rowNum = len(table.rows)
+    for i in range(1, rowNum):
+        row = table.rows[i]
+        colList = []
+        colNum = len(table.rows[i].cells)
+        maxColNum = max(maxColNum, colNum)
+        for j in range(colNum):
+            item = table.rows[i].cells[j]
+            newTableItem = TableItem(item.text, i - 1, 1, j, 1)
+            colList.append(newTableItem)
+        rowList.append(colList)
+    newTable = Table(rowNum - 1, maxColNum, caption, rowList)
+    return newTable
 
 
 if __name__ == "__main__":

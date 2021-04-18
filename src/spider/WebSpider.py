@@ -13,9 +13,6 @@ from src.tools.algorithm.exceptionCatch import except_output
 from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
 
 
-# TODO:使用布隆过滤器优化爬虫记录集
-# TODO:将初始化函数中的路径改为从全局变量字典中提取
-
 class WebSpider:
     def __init__(self):
         self.queueLength = 500  # 队列长度

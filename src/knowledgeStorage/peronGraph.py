@@ -69,11 +69,11 @@ class PersonGraph:
                 # 匹配节点
                 node1 = matcher.match("person", name=subjectName).first()
                 if node1 is None:
-                    node1 = Node("person",name=subjectName)
+                    node1 = Node("person", name=subjectName)
                     self.g.create(node1)
                 node1 = matcher.match("person", name=subjectName).first()
                 node2 = matcher.match("person", name=objectName).first()
                 if node2 is None:
-                    node2 = Node("person",name=objectName)
+                    node2 = Node("person", name=objectName)
                     self.g.create(node2)
                 self.__createRelationship(node1, node2, relationshipName)
