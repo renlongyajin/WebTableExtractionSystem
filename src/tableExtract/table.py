@@ -25,6 +25,63 @@ from src.tableExtract.TableItem import TableItem
 from src.tools.algorithm.exceptionCatch import except_output
 
 
+def _clearNameOrRel(string: str) -> str:
+    """
+    清理姓名和关系名,删除符号和括号
+    :param string:
+    :return:
+    """
+    if len(string) == 0 or string.isspace():
+        return ''
+    string = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", string)  # 去除括号
+    punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+    string = re.sub(punctuation, "", string)  # 去除人名和关系名中的  符号
+    return string
+
+
+def _append(aList: list, a: list, b: str, c: list):
+    """
+    将a,b,c添加到aList中
+    :param aList: 待添加列表
+    :param a:[人名：url]
+    :param b:关系
+    :param c:[人名:url]
+    :return:
+    """
+    a[0] = _clearNameOrRel(a[0])
+    b = _clearNameOrRel(b)
+    c[0] = _clearNameOrRel(c[0])
+    if not str(a[0]).isspace() and not str(c[0]).isspace():
+        aList.append([a, b, c])
+
+
+def _notNullAppend(aList: list, a: str, b: str, c: str, isName=False):
+    """
+    非空添加三元组到列表中，将[a,b,c]添加到列表，如果a，b,c中任意一个为空，则不添加,若长度太长，也不会添加
+    :param aList:待添加的列表
+    :param a:主体str
+    :param b:关系str
+    :param c:客体str
+    :param isName:第三个属性是否为人名
+    :return:
+    """
+    if len(a) == 0 or a.isspace() or len(b) == 0 or b.isspace() or len(c) == 0 or c.isspace():
+        return
+    if len(a) > 7 or len(b) > 7:  # 默认人物名，关系名不超过7个字符
+        return
+    myList = [a, b, c]
+    for i in range(len(myList)):
+        myList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", myList[i])  # 去除括号
+    punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+    myList[0] = re.sub(punctuation, "", myList[0])  # 去除人名和关系名中的  符号
+    myList[1] = re.sub(punctuation, "", myList[1])
+    if isName:
+        myList[2] = re.sub(punctuation, "", myList[2])
+        if len(myList[2]) > 7:
+            return
+    aList.append([myList[0], myList[1], myList[2]])
+
+
 class Table:
     """
     表格类
@@ -50,6 +107,7 @@ class Table:
         self.propertyLineNum = 1  # 属性行数
         self.tableType = None  # 表格类型
         self.centerWord = None  # 中心词汇,例如人物表，中心词汇就是人名，如“李渊”
+        self.hrefMap = {}  # 超链接映射
 
         self.getAbsolutePosition()  # 获取表格单元的绝对位置
         self.initialNormal()  # 判断表格是否正常
@@ -141,6 +199,7 @@ class Table:
         newTable.propertyLineNum = self.propertyLineNum  # 属性行数
         newTable.tableType = self.tableType  # 表格类型
         newTable.centerWord = self.centerWord  # 中心词汇,例如人物表，中心词汇就是人名，如“李渊”
+        newTable.hrefMap = self.hrefMap  # 超链接映射
         newTable.initialNormal()  # 判断表格是否正常
         newTable.initialCorrect()
         return newTable
@@ -370,6 +429,20 @@ class Table:
         for row in self.cell:
             for item in row:
                 item.getTableItemWordType()
+
+    def getHrefMap(self):
+        """
+        初始化href映射表
+        :return:
+        """
+        if len(self.hrefMap) == 0:
+            for row in self.cell:
+                for col in row:
+                    for key in col.href.keys():
+                        if key not in self.hrefMap:
+                            self.hrefMap[key] = col.href[key]
+        else:
+            return self.hrefMap
 
     def writeTable2Doc(self, filepath: str):
         """
@@ -633,33 +706,6 @@ class Table:
             raise Exception(f"不存在该表格展开方向<{direction}>")
         self.propertyNameList = [str(p.content) for p in self.propertyList]
 
-    @staticmethod
-    def __notNullAppend(aList: list, a: str, b: str, c: str, isName=False):
-        """
-        非空添加三元组到列表中，将[a,b,c]添加到列表，如果a，b,c中任意一个为空，则不添加,若长度太长，也不会添加
-        :param aList:待添加的列表
-        :param a:主体str
-        :param b:关系str
-        :param c:客体str
-        :param isName:第三个属性是否为人名
-        :return:
-        """
-        if len(a) == 0 or a.isspace() or len(b) == 0 or b.isspace() or len(c) == 0 or c.isspace():
-            return
-        if len(a) > 7 or len(b) > 7:  # 默认人物名，关系名不超过7个字符
-            return
-        myList = [a, b, c]
-        for i in range(len(myList)):
-            myList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", myList[i])  # 去除括号
-        punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
-        myList[0] = re.sub(punctuation, "", myList[0])  # 去除人名和关系名中的  符号
-        myList[1] = re.sub(punctuation, "", myList[1])
-        if isName:
-            myList[2] = re.sub(punctuation, "", myList[2])
-            if len(myList[2]) > 7:
-                return
-        aList.append([myList[0], myList[1], myList[2]])
-
     @except_output("表格专化为三元组时出错")
     def extractEntityRelationship(self):
         """
@@ -678,7 +724,8 @@ class Table:
             relationship = self.extractCaptionRelationship()
             entity = self.extractEntity()
         else:  # 其他表
-            self.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\未抽取三元组的表格.docx")
+            # self.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\未抽取三元组的表格.docx")
+            pass
         return [entity, relationship]
 
     def extractPropertyRelationship(self):
@@ -686,6 +733,8 @@ class Table:
         if not self.prefix:
             return relationship
         propertyNameList = self.getPropertyList(isPropertyName=True)
+        if len(propertyNameList) == 0:
+            return relationship
         propertyRelationshipList = self.__getPropertyRelationshipList()  # 属性关系列表，例如[关系,辈分]
         if len(propertyRelationshipList) == 0:  # 如果不存在属性关系，则返回空
             return relationship
@@ -693,17 +742,16 @@ class Table:
             for i in range(1, len(propertyRelationshipList)):
                 self.deleteOneCol(propertyNameList.index(propertyRelationshipList[i]))
             propertyNameList = self.getPropertyList(isPropertyName=True)  # 删除属性列之后更新一下属性列表
-        personNameIndex = self.__getPersonNameIndex()
-        if personNameIndex != -1:
-            personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
-            index = propertyNameList.index(propertyRelationshipList[0])
-            relationshipList = [str(relationship.content) for relationship in self.getColAt(index)]  # 获得关系名列表
-            self.deleteOneCol(index)  # 删除关系名列表
-            propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
-            for i in range(propertyLineNum, self.rowNumber):
-                # 构建三元组
-                self.__notNullAppend(relationship, self.prefix, relationshipList[i], personNameList[i],
-                                     isName=True)
+        personNameList = self.getPersonColList()
+        personHrefList = self.__getPersonHrefList(personNameList)
+        index = propertyNameList.index(propertyRelationshipList[0])
+        relationshipList = [str(relationship.content) for relationship in self.getColAt(index)]  # 获得关系名列表
+        self.deleteOneCol(index)  # 删除关系名列表
+        propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
+        prefix = [self.prefix, self.hrefMap[self.prefix] if self.prefix in self.hrefMap else '']
+        for i in range(propertyLineNum, self.rowNumber):
+            # 构建三元组
+            _append(relationship, prefix, relationshipList[i], personHrefList[i])
         return relationship
 
     def extractCaptionRelationship(self):
@@ -713,12 +761,14 @@ class Table:
         """
         relationship = []
         if self.name and self.prefix:
-            personNameIndex = self.__getPersonNameIndex()
-            if personNameIndex != -1:
-                personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
-                for i in range(len(personNameList)):
-                    # 添加三元组
-                    self.__notNullAppend(relationship, self.prefix, self.name, personNameList[i], isName=True)
+            personNameList = self.getPersonColList(removeHeader=True)
+            if len(personNameList) == 0:
+                return relationship
+            personHrefList = self.__getPersonHrefList(personNameList)
+            prefix = [self.prefix, self.hrefMap[self.prefix] if self.prefix in self.hrefMap else '']
+            for i in range(len(personNameList)):
+                # 添加三元组
+                _append(relationship, prefix, self.name, personHrefList[i])
         return relationship
 
     def extractEntity(self, getEntityTriad=False):
@@ -727,12 +777,8 @@ class Table:
         :return:
         """
         entity = []
-        personNameIndex = self.__getPersonNameIndex()
-        if personNameIndex == -1:
-            return entity
-        personNameList = [str(person.content) for person in self.getColAt(personNameIndex)]  # 获得人名列表
         if getEntityTriad:
-            self.deleteOneCol(personNameIndex)  # 删除人名列表
+            personNameList = self.getPersonColList(deleteCol=True, getName=True)  # 获取并删除人名
             if self.colNumber >= 1:
                 propertyIndex = self.discriminatePropertyLineNum(self.getUnfoldDirection()) - 1
                 propertyNameList = self.getPropertyList(isPropertyName=True)  # 获取除了人名之外的，其余的属性列表
@@ -741,17 +787,80 @@ class Table:
                     for j in range(propertyIndex, self.colNumber):
                         content = str(self.cell[i][j].content)
                         # 添加三元组
-                        self.__notNullAppend(entity, personNameList[i], propertyNameList[j], content)
+                        _notNullAppend(entity, personNameList[i], propertyNameList[j], content)
         else:
+            if self.colNumber == 1:  # 仅剩一个属性了，必然不存在实体
+                return entity
+            personNameList = self.getPersonColList(getName=True, removeHeader=True)
+            if len(personNameList) == 0:
+                return entity
+            personHrefList = self.__getPersonHrefList(self.getPersonColList(removeHeader=True))
             dictList = self.__table2DictList(filtration=True, deletePersonName=True)
-            personNameList = self.__clearPersonNameList(personNameList)
             if len(personNameList) == len(dictList):
                 for i in range(len(personNameList)):
                     if len(personNameList[i]) == 0 or str(personNameList[i]).isspace():  # 姓名为空则跳过
                         continue
-                    entity.append([personNameList[i], dictList[i]])
+                    entity.append([personHrefList[i], dictList[i]])
 
         return entity
+
+    def getPersonColList(self, deleteCol=False, removeHeader=False, getName=False) -> list:
+        """
+        获取人名列表
+        :param deleteCol:是否删除人名的这一列
+        :param removeHeader:是否去除表头,一般是属性栏
+        :param getName: 是否获取人名
+        :return:人名的那一列
+        """
+
+        def __clearPersonNameList(personNameList: list):
+            """
+            将人名变成清晰干净的名字
+            :param personNameList:
+            :return:
+            """
+            punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+            for i in range(len(personNameList)):
+                personNameList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "",
+                                           personNameList[i])  # 去除括号
+                personNameList[i] = str(personNameList[i]).split("/")[0]
+                personNameList[i] = re.sub(punctuation, "", personNameList[i])
+            return personNameList
+
+        personList = []
+        personNameIndex = self.__getPersonNameIndex()
+        if personNameIndex != -1:
+            personList = [person for person in self.getColAt(personNameIndex)]  # 获得人名所在的表格列
+        if len(personList) == 0:
+            return personList
+        if removeHeader:
+            propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
+            personList.pop(propertyLineNum - 1)
+        if getName:
+            personList = [str(person.content) for person in personList]
+            personList = __clearPersonNameList(personList)  # 清理人名
+        if deleteCol:
+            self.deleteOneCol(personNameIndex)
+        return personList
+
+    def __getPersonHrefList(self, personList: list):
+        """
+        返回人的href链接
+        :param personList:
+        :return:
+        """
+
+        personHrefList = []
+        for person in personList:
+            personName = str(person.content)
+            href = person.href
+            if personName in href:
+                personHrefList.append([personName, href[personName]])
+            elif personName in self.hrefMap:
+                personHrefList.append([personName, self.hrefMap[personName]])
+            else:
+                personHrefList.append([personName, ''])
+        return personHrefList
 
     def __getPersonNameIndex(self):
         """
@@ -780,17 +889,6 @@ class Table:
                 break
             index += 1
         return personNameIndex
-
-    @staticmethod
-    def __clearPersonNameList(personNameList: list):
-        punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
-        personNameList.pop(0)  # 删除第一个元素
-        for i in range(len(personNameList)):
-            personNameList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "",
-                                       personNameList[i])  # 去除括号
-            personNameList[i] = str(personNameList[i]).split("/")[0]
-            personNameList[i] = re.sub(punctuation, "", personNameList[i])
-        return personNameList
 
     def clearTable(self):
         """

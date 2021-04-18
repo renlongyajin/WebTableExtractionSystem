@@ -1,10 +1,15 @@
 #!/user/bin/env python3
 # -*- coding: utf-8 -*-
 import json
+import time
+from queue import Queue
+
 from py2neo import Graph, Node, NodeMatcher, Relationship
 import csv
 
+from src.IO.databaseInteraction.MSSQL import SqlServerProcessor
 from src.app import gol
+from src.tools.algorithm.exceptionCatch import except_output
 
 
 class PersonGraph:
@@ -32,7 +37,6 @@ class PersonGraph:
         for entity in entityList:
             name = entity[0]
             entityDict = entity[1]
-            nodelist = list(self.g.nodes.match())
             # -- create if not exists
             # 节点匹配对象
             matcher = NodeMatcher(self.g)
@@ -42,18 +46,17 @@ class PersonGraph:
                 node = Node(label, **entityDict, name=name)
                 try:
                     self.g.create(node)
-                    # self.g.push(node)
+                    print(f"创建节点<{name}>")
                 except Exception as e:
                     print(e)
             else:
                 print(f"当前节点已经存在<{name}>")
 
-            pass
-
-    def __createRelationship(self, start_node: Node, end_node: Node, rel_name: str):
+    def __createRelationship(self, start_node: Node, rel_name: str, end_node: Node):
         try:
             rel = Relationship(start_node, rel_name, end_node)
             self.g.create(rel)
+            print(f"创建关系<{start_node['name']},{rel_name},{end_node['name']}>")
         except Exception as e:
             print(e)
 
@@ -77,3 +80,61 @@ class PersonGraph:
                     node2 = Node("person", name=objectName)
                     self.g.create(node2)
                 self.__createRelationship(node1, node2, relationshipName)
+
+    def creteRelationshipsWithList(self, triadList: list):
+        for triad in triadList:
+            node1 = self.getNode("person", triad[0])
+            relationship = triad[1]
+            node2 = self.getNode("person", triad[2])
+            self.__createRelationship(node1, relationship, node2)
+
+    def getNode(self, label: str, name: str):
+        """
+        按照一定条件查找是否存在该节点，不存在则创建
+        :param label:
+        :param name:
+        :return:
+        """
+        matcher = NodeMatcher(self.g)
+        node = matcher.match(label, name=name).first()
+        if node:
+            return node
+            # if node['url'] is not None:
+            #     if False:  # TODO:这里有一个判断条件，如果url相同则返回
+            #         return node
+        node = Node(label, name=name)
+        try:
+            self.g.create(node)  # TODO:如何返回自己刚刚创建的节点
+            return node
+        except Exception as e:
+            print(e)
+
+    @except_output()
+    def start(self):
+        pendingQueue = Queue(maxsize=200)
+        maxWaitTimes = 100
+        waitTimes = maxWaitTimes
+        sql = SqlServerProcessor()
+        while waitTimes:
+            ERList = sql.readERFromDB('entityAndRelationship', int(pendingQueue.maxsize / 2))
+            sql.deleteFromDBWithIdNum("entityAndRelationship", int(pendingQueue.maxsize / 2))
+            for ER in ERList:
+                pendingQueue.put_nowait(ER)
+
+            while not pendingQueue.empty():
+                waitTimes = maxWaitTimes
+                ER = pendingQueue.get_nowait()
+                entityList = json.loads(ER[0])
+                relationshipTriadList = json.loads(ER[1])
+                if entityList is not None and len(entityList) != 0:
+                    self.__createNodeWithEntityList("person", entityList)
+                if relationshipTriadList is not None and len(relationshipTriadList) != 0:
+                    self.creteRelationshipsWithList(relationshipTriadList)
+
+                if pendingQueue.qsize() < int(pendingQueue.maxsize / 2):
+                    for data in sql.readERFromDB("entityAndRelationship", int(pendingQueue.maxsize / 2)):
+                        pendingQueue.put(data)
+                    sql.deleteFromDBWithIdNum("entityAndRelationship", int(pendingQueue.maxsize / 2))
+
+            time.sleep(1.0)
+            waitTimes -= 1

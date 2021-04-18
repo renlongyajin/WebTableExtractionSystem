@@ -10,7 +10,7 @@ from src.IO.fileInteraction.FileIO import FileIO
 from src.spider.UrlExtractor import UrlExtractor
 from src.spider.UserAgent import USER_AGENTS
 from src.tools.algorithm.exceptionCatch import except_output
-from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
+from src.IO.databaseInteraction.MSSQL import SqlServerProcessor
 
 
 class WebSpider:
@@ -68,8 +68,8 @@ class WebSpider:
         _urlExtractor = UrlExtractor()
         # 读取种子链接到待爬队列
         SeedNum = self.readSeed(self.SeedPath)
-        sql = SqlServerForSpider()
-        sql.clearAllTable()  # 重置当前所有
+        sql = SqlServerProcessor()
+        # sql.clearAllTable()  # 重置当前所有
         if SeedNum >= 0:
             # 计数
             count = 1

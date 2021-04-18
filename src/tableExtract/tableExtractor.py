@@ -1,4 +1,5 @@
 import copy
+import json
 import time
 from pprint import pprint
 from queue import Queue
@@ -11,7 +12,7 @@ from docx import Document
 from pyhanlp import HanLP  # 使用前导入 HanLP工具
 
 import src.app.gol as gol
-from src.IO.databaseInteraction.MSSQL import SqlServerForSpider
+from src.IO.databaseInteraction.MSSQL import SqlServerProcessor
 from src.IO.fileInteraction.FileIO import FileIO
 from src.spider.WebSpider import WebSpider
 from src.tableExtract.table import changeTig2Table, Table, TableItem, changeWordTable2Table
@@ -26,6 +27,8 @@ class TableExtract:
             ["n", "nb", "nba", "nbc", "nbp", "nf", "ng", "nh", "nhd", "nhm", "ni", "nic", "nis", "nit", "nl", "nm",
              "nmc", "nn", "nnd", "nnt", "nr", "nr1", "nr2", "nrf", "nrj", "ns", "nsf", "nt", "ntc", "ntcb", "ntcf",
              "ntch", "nth", "nto", "nts", "ntu", "nx", "nz"])
+        self.nowName = ''
+        self.nowUrl = ''
 
     def test(self):
         _tableDocPath = gol.get_value("tableDocPath")
@@ -33,27 +36,25 @@ class TableExtract:
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # 这是一个测试
         tempUrl = [
-            r"https://baike.baidu.com/item/%E8%80%81%E8%88%8D",  # 老舍
-            r"https://baike.baidu.com/item/%E6%AD%A6%E5%88%99%E5%A4%A9/61872"
+            r"https://baike.baidu.com/item/%E5%AD%94%E5%AD%90/1584",  # 孔子
         ]
         for url in tempUrl:
             html = WebSpider.getHtml(url)
-            aList = url.split('/')
-            name = aList[- 1]
-            name = unquote(name)
+            last = unquote(url.split('/')[-1])
+            self.nowName = unquote(url.split('/')[-2]) if last.isdigit() else last
+            self.nowUrl = url
             _tableList = self.getTable(html)
+            allRes = []
             for table in _tableList:
-                table.writeTable2Doc(f"{_tableDocPath}\\{name}.docx")
+                table.hrefMap[self.nowName] = self.nowUrl
                 table = table.extendTable()
-                table.writeTable2Doc(f"{_tableDocPath}\\{name}展开.docx")
-                # if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
-                #     table = table.flip()
-                # table.clearTable()
-                # entityTriad, relationshipTriad = table.extractEntityRelationship()
-                # pprint(relationshipTriad)
-                # pprint(entityTriad)
-                # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entityTriadTest.csv", entityTriad, mode="a+")
-                # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationshipTriadTest.csv", entityTriad, mode="a+")
+                table.prefix = self.nowName
+                if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
+                    table = table.flip()
+                table.clearTable()
+                res = table.extractEntityRelationship()
+                allRes.append(res)
+            pass
 
     def test1(self):
         tableList = self.extractWordTable()
@@ -67,7 +68,7 @@ class TableExtract:
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         maxSize = 200
         pendingQueue = Queue(maxSize)
-        sql = SqlServerForSpider()
+        sql = SqlServerProcessor()
         waitTimes = 100  # 100s时间的等待,如果100s结束了，数据库中都没有数据，那么终止该程序
         while waitTimes:
             for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(maxSize / 2)):
@@ -87,7 +88,7 @@ class TableExtract:
                     if table.isNormal() and table.isCorrect():
                         if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
                             table = table.flip()
-                        table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{name}__规整后.docx")
+                        # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{name}__规整后.docx")
                         table.clearTable()
                         res = table.extractEntityRelationship()
                         if res:
@@ -95,18 +96,15 @@ class TableExtract:
                             relationship = res[1]
                             pprint(entity)
                             pprint(relationship)
-                            # FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\entity.csv", entity, mode="a+")
-                            if relationship:
-                                FileIO.writeTriad2csv(f"{entityAndRelationshipPath}\\relationship.csv", relationship,
-                                                      mode="a+")
-                            if entity:
-                                FileIO.write2Json(entity, f"{entityAndRelationshipPath}\\entity.json", "a+",
-                                                  changeLine=True)
+                            if entity is not None or relationship is not None:
+                                entityJson = json.dumps(entity, ensure_ascii=False)
+                                relationship = json.dumps(relationship, ensure_ascii=False)
+                                sql.writeER2DB('entityAndRelationship', entityJson, relationship)
 
-                if pendingQueue.qsize() < int(maxSize / 2):
-                    for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(maxSize / 2)):
+                if pendingQueue.qsize() < int(pendingQueue.maxsize / 2):
+                    for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(pendingQueue.maxsize / 2)):
                         pendingQueue.put(data)
-                    sql.deleteFromDBWithIdNum("personUrlAndHtml", int(maxSize / 2))
+                    sql.deleteFromDBWithIdNum("personUrlAndHtml", int(pendingQueue.maxsize / 2))
 
             time.sleep(1.0)
             waitTimes -= 1
@@ -283,8 +281,7 @@ class TableExtract:
         ruleDict = FileIO.readJson(f"{urlTableMapPath}\\{extractUrl}.json")
         return self.extractListTable(tag, ruleDict)
 
-    @staticmethod
-    def extractListTable(tag: Tag, ruleDict: dict):
+    def extractListTable(self, tag: Tag, ruleDict: dict):
         _tableList = []
         if "class" in ruleDict.keys():
             class_name = ruleDict["class"]
@@ -296,6 +293,7 @@ class TableExtract:
                 for dl in dlList:
                     dt.extend(dl.find_all("dt"))
                     dd.extend(dl.find_all("dd"))
+
                 if len(dt) == len(dd):
                     newTagList = []
                     for i in range(len(dt)):
@@ -324,8 +322,10 @@ class TableExtract:
                     if newTable:
                         ATable = Table(len(newTable), 2, table=newTable)
                         ATable.unfoldDirection = "COL"
-                        # ATable = ATable.flip()
-                        ATable.tableType = "个人信息表"
+                        if str(ATable.cell[0][0].content) in ["本名", "中文名"]:
+                            ATable.hrefMap[str(ATable.cell[0][1].content)] = self.nowUrl
+                            ATable.tableType = "个人信息表"
+
                         _tableList.append(ATable)
         return _tableList
 

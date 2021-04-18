@@ -47,10 +47,9 @@ def initial():
 
 if __name__ == "__main__":
     initial()
-    spider = WebSpider()
-    threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
+    # spider = WebSpider()
+    # threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
     tableExtractor = TableExtract()
-    threading.Thread(target=tableExtractor.start).start()
+    threading.Thread(target=tableExtractor.test).start()
     # personGraph = PersonGraph()
-    # personGraph.createNodes()
-    # personGraph.createRelationships()
+    # threading.Thread(target=personGraph.start).start()
