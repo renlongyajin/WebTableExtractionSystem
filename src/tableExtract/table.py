@@ -1,42 +1,22 @@
 import json
 import os
-from copy import deepcopy
-from pprint import pprint
-
-import docx
-from bs4 import Tag
-from bs4 import NavigableString
-import numpy as np
 import re
+from copy import deepcopy
 from typing import Tuple
 
+import numpy as np
+from bs4 import NavigableString
+from bs4 import Tag
 from docx import Document
-from docx.table import Table as DocTable
-from pyhanlp import HanLP
-from treelib import Tree
-from docx.oxml.ns import qn
-from docx.shared import Pt
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml.ns import qn
+from docx.table import Table as DocTable
+from treelib import Tree
 
 from src.IO.fileInteraction.FileIO import FileIO
 from src.app import gol
 from src.tableExtract.TableItem import TableItem
 from src.tools.algorithm.exceptionCatch import except_output
-
-
-def _clearNameOrRel(string: str) -> str:
-    """
-    清理姓名和关系名,删除符号和括号
-    :param string:
-    :return:
-    """
-    if len(string) == 0 or string.isspace():
-        return ''
-    string = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", string)  # 去除括号
-    punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
-    string = re.sub(punctuation, "", string)  # 去除人名和关系名中的  符号
-    return string
 
 
 def _append(aList: list, a: list, b: str, c: list):
@@ -48,9 +28,27 @@ def _append(aList: list, a: list, b: str, c: list):
     :param c:[人名:url]
     :return:
     """
+
+    def _clearNameOrRel(string: str) -> str:
+        """
+        清理姓名和关系名,删除符号和括号
+        :param string:
+        :return:
+        """
+        if len(string) == 0 or string.isspace():
+            return ''
+        string = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", string)  # 去除括号
+        punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+        string = re.sub(punctuation, "", string)  # 去除人名和关系名中的  符号
+        return string
+
     a[0] = _clearNameOrRel(a[0])
     b = _clearNameOrRel(b)
     c[0] = _clearNameOrRel(c[0])
+    if len(b) > 7:  # 关系名不能大于七个字符
+        return
+    if len(a[0]) == 0 or str(a[0]).isspace() or len(b) == 0 or b.isspace() or len(c[0]) == 0 or str(c[0]).isspace():
+        return
     if not str(a[0]).isspace() and not str(c[0]).isspace():
         aList.append([a, b, c])
 
@@ -113,57 +111,39 @@ class Table:
         self.initialNormal()  # 判断表格是否正常
         self.initialTableItemsType()  # 初始化表格单元的类型
 
-    def getAbsolutePosition(self):
+    def extendTable(self):
         """
-        获得表格中每个项目所在的绝对位置，其中行绝对位置为self.absoluteRow,列绝对位置为self.absoluteCol
-        :return:
+        将当前表格扩展为规范表格
+        :return: 扩展后的表格
         """
-        positionList = []
-        for i in range(len(self.cell)):
-            colIndex = 0
-            before = 0  # 记录从这一行开始，到现在，之前有几个元素进入队列
-            for j in range(len(self.cell[i])):
-                col = self.cell[i][j]
-                colStart = 0
-                for position in positionList:
-                    colStart += position[1]
-                col.absoluteCol = colStart + j - before
-                col.absoluteRow = i
-                if col.rowspan > 1 or col.colspan > 1:
-                    positionList.append([col.rowspan, col.colspan])
-                    before += 1
-                colIndex += 1
-
-            for x in reversed(range(len(positionList))):
-                if positionList[x][0] > 1:
-                    positionList[x][0] -= 1
-                else:
-                    positionList.pop(x)
-
-    def initialCorrect(self) -> bool:
-        """
-        判断表格是否正确，正确表格的行与列单位数都非常规整
-        :return:
-        """
-        colLenList = []
+        # 行扩展
         for rows in self.cell:
-            colLen = 0
-            for col in rows:
-                colLen += col.colspan
-            colLenList.append(colLen)
-        self.__isCorrect = (len(set(colLenList)) == 1)
-        return self.__isCorrect
-
-    def initialNormal(self):
-        """
-        判断是否是一个正常的表格，正常表格必须行列数都大于2
-        :return:
-        """
-        if self.rowNumber >= 2 and self.colNumber >= 2:
-            self.__isNormal = True
-        else:
-            self.__isNormal = False
-        return self.__isNormal
+            before = 0
+            for item in rows:
+                if item.rowspan > 1:
+                    rowspan = item.rowspan
+                    item.rowspan = 1
+                    for row in range(item.absoluteRow + 1, item.absoluteRow + rowspan):
+                        newItem = deepcopy(item)
+                        newItem.rowLoc = row
+                        newItem.absoluteRow = row
+                        self.cell[row].insert(before, newItem)
+                    # before += 1
+                before += 1
+        # 列扩展
+        for rows in self.cell:
+            for item in rows:
+                if item.colspan > 1:
+                    colspan = item.colspan
+                    item.colspan = 1
+                    for col in range(item.absoluteCol + 1, item.absoluteCol + colspan):
+                        newItem2 = deepcopy(item)
+                        newItem2.colLoc = col
+                        newItem2.absoluteCol = col
+                        self.cell[item.absoluteRow].insert(item.absoluteCol, newItem2)
+        self.initialNormal()
+        self.initialCorrect()
+        return self
 
     def isCorrect(self):
         """
@@ -178,6 +158,39 @@ class Table:
         :return:
         """
         return self.__isNormal
+
+    def deleteOneRow(self, index: int):
+        """
+        删除指定行
+        :param index:要删除的索引号，例如Index=0代表第1行
+        :return:
+        """
+        if self.__isCorrect and self.__isNormal:
+            if index < 0 or index >= self.rowNumber:
+                raise Exception(f"要删除的行<{index}>超出行数范围<0,{self.rowNumber - 1}>")
+            del self.cell[index]
+            self.rowNumber -= 1
+            self.getAbsolutePosition()
+            self.initialPropertyList()
+        else:
+            raise Exception("当前表格未规整，无法删除行")
+
+    def deleteOneCol(self, index: int):
+        """
+        删除指定列
+        :param index: 要删除的索引号，例如Index=0代表第1列
+        :return:
+        """
+        if self.__isCorrect and self.__isNormal:
+            if index < 0 or index >= self.colNumber:
+                raise Exception(f"要删除的列<{index}>超出列数范围<0,{self.colNumber - 1}>")
+            for i in range(self.rowNumber):
+                del self.cell[i][index]
+            self.getAbsolutePosition()
+            self.colNumber -= 1
+            self.initialPropertyList()
+        else:
+            raise Exception("当前表格未规整，无法删除列")
 
     def flip(self):
         """
@@ -214,7 +227,7 @@ class Table:
                 self.cell[i][j].content = str(self.cell[i][j].content)
         return self
 
-    def getLengthCharacter(self):
+    def getTableItemLengthCharacter(self):
         """
         计算矩阵的几何特征，返回行方差均值和列方差均值，方差越小，则按照该方式展开的可能性越大
         :return: 方差均值和列方差均值
@@ -224,20 +237,38 @@ class Table:
             for j in range(self.colNumber):
                 data[i, j] = len(str(self.cell[i][j].content))
 
-        rowVarianceMean = np.mean(np.std(data, axis=0))  # 行方差均值
-        colVarianceMean = np.mean(np.std(data, axis=1))  # 列方差均值
+        colVarianceMean = np.mean(np.std(data, axis=0))  # 列方差均值
+        rowVarianceMean = np.mean(np.std(data, axis=1))  # 行方差均值
         sumNumber = rowVarianceMean + colVarianceMean
         if sumNumber == 0:
             return rowVarianceMean, colVarianceMean
         return rowVarianceMean / sumNumber, colVarianceMean / sumNumber
 
-    def getTypeCharacter(self):
+    def getTableItemTypeCharacter(self):
         """
         计算矩阵的类型特征，返回行方差均值和列方差均值，方差越小，则按照该方式展开的可能性越大
         :return: 方差均值和列方差均值
         """
         _typeTree = TypeTree()
         return _typeTree.getTypeCharacter(self)
+
+    def getTableItemWordTypeCharacter(self):
+        """
+        获得行列的单词类型差异
+        :return:
+        """
+        self.initialTableItemWordType()
+        data = np.zeros((self.rowNumber, self.colNumber), dtype=int)
+        for i in range(self.rowNumber):
+            for j in range(self.colNumber):
+                data[i, j] = self.cell[i][j].wordType
+
+        colVarianceMean = np.mean(np.std(data, axis=0))  # 列方差均值
+        rowVarianceMean = np.mean(np.std(data, axis=1))  # 行方差均值
+        sumNumber = rowVarianceMean + colVarianceMean
+        if sumNumber == 0:
+            return rowVarianceMean, colVarianceMean
+        return rowVarianceMean / sumNumber, colVarianceMean / sumNumber
 
     def getRowAt(self, row: int):
         """
@@ -270,40 +301,6 @@ class Table:
         else:
             raise Exception(f"当前表格不正常，无法获取第{col}列的数据列表")
 
-    def extendTable(self):
-        """
-        将当前表格扩展为规范表格
-        :return: 扩展后的表格
-        """
-        # 行扩展
-        for rows in self.cell:
-            before = 0
-            for item in rows:
-                if item.rowspan > 1:
-                    rowspan = item.rowspan
-                    item.rowspan = 1
-                    for row in range(item.absoluteRow + 1, item.absoluteRow + rowspan):
-                        newItem = deepcopy(item)
-                        newItem.rowLoc = row
-                        newItem.absoluteRow = row
-                        self.cell[row].insert(before, newItem)
-                    # before += 1
-                before += 1
-        # 列扩展
-        for rows in self.cell:
-            for item in rows:
-                if item.colspan > 1:
-                    colspan = item.colspan
-                    item.colspan = 1
-                    for col in range(item.absoluteCol + 1, item.absoluteCol + colspan):
-                        newItem2 = deepcopy(item)
-                        newItem2.colLoc = col
-                        newItem2.absoluteCol = col
-                        self.cell[item.absoluteRow].insert(item.absoluteCol, newItem2)
-        self.initialNormal()
-        self.initialCorrect()
-        return self
-
     def getUnfoldDirection(self) -> str:
         """
         返回表格的展开方向,只能判断为横向展开或者纵向展开
@@ -320,18 +317,144 @@ class Table:
             self.unfoldDirection = "COL"
             return self.unfoldDirection
 
-        rowVarianceMean, colVarianceMean = self.getLengthCharacter()
-        rowTypeCharacter, colTypeCharacter = self.getTypeCharacter()
+        rowVarianceMean, colVarianceMean = self.getTableItemLengthCharacter()
+        rowTypeCharacter, colTypeCharacter = self.getTableItemTypeCharacter()
         W1 = 0.5
         W2 = 0.5
         Row = W1 * rowVarianceMean + W2 * rowTypeCharacter
         Col = W1 * colVarianceMean + W2 * colTypeCharacter
         if Row < Col:
             direction = "ROW"
+        elif Row == Col:
+            rowWordTypeVarianceMean, colWordTypeVarianceMean = self.getTableItemWordTypeCharacter()
+            if rowWordTypeVarianceMean < colWordTypeVarianceMean:
+                direction = "ROW"
+            elif rowWordTypeVarianceMean > colWordTypeVarianceMean:
+                direction = "COL"
+            else:
+                direction = "ROW"  # 如果无法判断，则判断为横向
         else:
             direction = "COL"
         self.unfoldDirection = direction
         return self.unfoldDirection
+
+    def getAbsolutePosition(self):
+        """
+        获得表格中每个项目所在的绝对位置，其中行绝对位置为self.absoluteRow,列绝对位置为self.absoluteCol
+        :return:
+        """
+        positionList = []
+        for i in range(len(self.cell)):
+            colIndex = 0
+            before = 0  # 记录从这一行开始，到现在，之前有几个元素进入队列
+            for j in range(len(self.cell[i])):
+                col = self.cell[i][j]
+                colStart = 0
+                for position in positionList:
+                    colStart += position[1]
+                col.absoluteCol = colStart + j - before
+                col.absoluteRow = i
+                if col.rowspan > 1 or col.colspan > 1:
+                    positionList.append([col.rowspan, col.colspan])
+                    before += 1
+                colIndex += 1
+
+            for x in reversed(range(len(positionList))):
+                if positionList[x][0] > 1:
+                    positionList[x][0] -= 1
+                else:
+                    positionList.pop(x)
+
+    def getPropertyList(self, isPropertyName=False):
+        """
+        获取属性列
+        :return:
+        """
+        if not isPropertyName:
+            if self.propertyList:
+                return self.propertyList
+        else:
+            if self.propertyNameList:
+                return self.propertyNameList
+        self.initialPropertyList()
+        if not isPropertyName:
+            return self.propertyList
+        else:
+            self.propertyNameList = [str(item.content) for item in self.propertyList]
+            return self.propertyNameList
+
+    def getHrefMap(self):
+        """
+        初始化href映射表
+        :return:
+        """
+        if len(self.hrefMap) == 0:
+            for row in self.cell:
+                for col in row:
+                    for key in col.href.keys():
+                        if key not in self.hrefMap:
+                            self.hrefMap[key] = col.href[key]
+        else:
+            return self.hrefMap
+
+    def getTableType(self):
+        """
+        识别表格类型
+        :return:
+        """
+        if self.tableType:
+            return self.tableType
+        else:
+            if self.__isPersonInfoTable():
+                self.tableType = "个人信息表"
+            elif self.__isPropertyRelationShipTable():
+                self.tableType = "属性关系表"
+            elif self.__isTitleRelationShipTable():
+                self.tableType = "标题关系表"
+            elif self.__isEntityRelationshipTable():
+                self.tableType = "实体关系表"
+            else:
+                self.tableType = "其他"
+        return self.tableType
+
+    def getPersonColList(self, deleteCol=False, removeHeader=False, getName=False) -> list:
+        """
+        获取人名列表
+        :param deleteCol:是否删除人名的这一列
+        :param removeHeader:是否去除表头,一般是属性栏
+        :param getName: 是否获取人名
+        :return:人名的那一列
+        """
+
+        def __clearPersonNameList(personNameList: list):
+            """
+            将人名变成清晰干净的名字
+            :param personNameList:
+            :return:
+            """
+            punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+            for i in range(len(personNameList)):
+                personNameList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "",
+                                           personNameList[i])  # 去除括号
+                personNameList[i] = str(personNameList[i]).split("/")[0]
+                personNameList[i] = re.sub(punctuation, "", personNameList[i])
+            return personNameList
+
+        personList = []
+        personNameIndex = self.__getPersonNameIndex()
+        if personNameIndex != -1:
+            personList = [person for person in self.getColAt(personNameIndex)]  # 获得人名所在的表格列
+        if len(personList) == 0:
+            return personList
+        if removeHeader:
+            propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
+            personList.pop(propertyLineNum - 1)
+        if getName:
+            personList = [str(person.content) for person in personList]
+            personList = __clearPersonNameList(personList)  # 清理人名
+        if deleteCol:
+            self.deleteOneCol(personNameIndex)
+        return personList
 
     def __tagDiscriminatePropertyLineNum(self, direction: str):
         res = 0
@@ -384,23 +507,6 @@ class Table:
             raise Exception(f"不存在这种表格展开方向<{direction}>")
         return res
 
-    def __treeDepthDiscriminatePropertyLineNum(self, direction: str):
-        """
-        根据数深度判别属性行列数。
-        该方法仅在根据类型判别行列数(typeDiscriminatePropertyLineNum)失效后才使用。
-        :return:
-        """
-        res = 1
-        if direction == "ROW":
-            for i in range(self.rowNumber):
-                for j in range(self.colNumber):
-                    item = self.cell[i][j]
-        elif direction == "COL":
-            pass
-        else:
-            pass
-        return res
-
     def discriminatePropertyLineNum(self, direction: str):
         if self.propertyLineNum:
             return self.propertyLineNum
@@ -408,7 +514,7 @@ class Table:
         if res == 0 or res > 2:
             res = self.__typeDiscriminatePropertyLineNum(direction)
             if res == 0:
-                res = self.__treeDepthDiscriminatePropertyLineNum(direction)
+                res = 1
         self.propertyLineNum = res
         return self.propertyLineNum
 
@@ -430,19 +536,41 @@ class Table:
             for item in row:
                 item.getTableItemWordType()
 
-    def getHrefMap(self):
+    def initialCorrect(self) -> bool:
         """
-        初始化href映射表
+        判断表格是否正确，正确表格的行与列单位数都非常规整
         :return:
         """
-        if len(self.hrefMap) == 0:
-            for row in self.cell:
-                for col in row:
-                    for key in col.href.keys():
-                        if key not in self.hrefMap:
-                            self.hrefMap[key] = col.href[key]
+        colLenList = []
+        for rows in self.cell:
+            colLen = 0
+            for col in rows:
+                colLen += col.colspan
+            colLenList.append(colLen)
+        self.__isCorrect = (len(set(colLenList)) == 1)
+        return self.__isCorrect
+
+    def initialNormal(self):
+        """
+        判断是否是一个正常的表格，正常表格必须行列数都大于2
+        :return:
+        """
+        if self.rowNumber >= 2 and self.colNumber >= 2:
+            self.__isNormal = True
         else:
-            return self.hrefMap
+            self.__isNormal = False
+        return self.__isNormal
+
+    def initialPropertyList(self):
+        direction = self.getUnfoldDirection()
+        propertyLineNum = self.discriminatePropertyLineNum(direction)
+        if direction == "ROW":
+            self.propertyList = self.getRowAt(propertyLineNum - 1)
+        elif direction == "COL":
+            self.propertyList = self.getColAt(propertyLineNum - 1)
+        else:
+            raise Exception(f"不存在该表格展开方向<{direction}>")
+        self.propertyNameList = [str(p.content) for p in self.propertyList]
 
     def writeTable2Doc(self, filepath: str):
         """
@@ -494,7 +622,8 @@ class Table:
         if self.__isNormal and self.__isCorrect:
             if deletePersonName:
                 personNameIndex = self.__getPersonNameIndex()
-                self.deleteOneCol(personNameIndex)
+                if personNameIndex != -1:
+                    self.deleteOneCol(personNameIndex)
             jsonStrList = []
             direction = self.getUnfoldDirection()
             lineNum = self.discriminatePropertyLineNum(direction)
@@ -519,26 +648,6 @@ class Table:
         :return:
         """
         return json.dumps(self.__table2DictList(), ensure_ascii=False)
-
-    def getTableType(self):
-        """
-        识别表格类型
-        :return:
-        """
-        if self.tableType:
-            return self.tableType
-        else:
-            if self.__isPersonInfoTable():
-                self.tableType = "个人信息表"
-            elif self.__isPropertyRelationShipTable():
-                self.tableType = "属性关系表"
-            elif self.__isTitleRelationShipTable():
-                self.tableType = "标题关系表"
-            elif self.__isEntityRelationshipTable():
-                self.tableType = "实体关系表"
-            else:
-                self.tableType = "其他"
-        return self.tableType
 
     def __isPersonInfoTable(self):
         """
@@ -615,39 +724,6 @@ class Table:
                     return True
         return False
 
-    def deleteOneRow(self, index: int):
-        """
-        删除指定行
-        :param index:要删除的索引号，例如Index=0代表第1行
-        :return:
-        """
-        if self.__isCorrect and self.__isNormal:
-            if index < 0 or index >= self.rowNumber:
-                raise Exception(f"要删除的行<{index}>超出行数范围<0,{self.rowNumber - 1}>")
-            del self.cell[index]
-            self.rowNumber -= 1
-            self.getAbsolutePosition()
-            self.initialPropertyList()
-        else:
-            raise Exception("当前表格未规整，无法删除行")
-
-    def deleteOneCol(self, index: int):
-        """
-        删除指定列
-        :param index: 要删除的索引号，例如Index=0代表第1列
-        :return:
-        """
-        if self.__isCorrect and self.__isNormal:
-            if index < 0 or index >= self.colNumber:
-                raise Exception(f"要删除的列<{index}>超出列数范围<0,{self.colNumber - 1}>")
-            for i in range(self.rowNumber):
-                del self.cell[i][index]
-            self.getAbsolutePosition()
-            self.colNumber -= 1
-            self.initialPropertyList()
-        else:
-            raise Exception("当前表格未规整，无法删除列")
-
     def __getPropertyRelationshipList(self):
         """
         获取属性关系列表，并且把与人物有关的属性由高到低排序
@@ -677,35 +753,6 @@ class Table:
         personPropertySet = personPropertySet.union(tablePropertySet)
         FileIO.write2Json(list(personPropertySet), jsonFilePath)
 
-    def getPropertyList(self, isPropertyName=False):
-        """
-        获取属性列
-        :return:
-        """
-        if not isPropertyName:
-            if self.propertyList:
-                return self.propertyList
-        else:
-            if self.propertyNameList:
-                return self.propertyNameList
-        self.initialPropertyList()
-        if not isPropertyName:
-            return self.propertyList
-        else:
-            self.propertyNameList = [str(item.content) for item in self.propertyList]
-            return self.propertyNameList
-
-    def initialPropertyList(self):
-        direction = self.getUnfoldDirection()
-        propertyLineNum = self.discriminatePropertyLineNum(direction)
-        if direction == "ROW":
-            self.propertyList = self.getRowAt(propertyLineNum - 1)
-        elif direction == "COL":
-            self.propertyList = self.getColAt(propertyLineNum - 1)
-        else:
-            raise Exception(f"不存在该表格展开方向<{direction}>")
-        self.propertyNameList = [str(p.content) for p in self.propertyList]
-
     @except_output("表格专化为三元组时出错")
     def extractEntityRelationship(self):
         """
@@ -726,7 +773,7 @@ class Table:
         else:  # 其他表
             # self.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\未抽取三元组的表格.docx")
             pass
-        return [entity, relationship]
+        return entity, relationship
 
     def extractPropertyRelationship(self):
         relationship = []
@@ -751,7 +798,8 @@ class Table:
         prefix = [self.prefix, self.hrefMap[self.prefix] if self.prefix in self.hrefMap else '']
         for i in range(propertyLineNum, self.rowNumber):
             # 构建三元组
-            _append(relationship, prefix, relationshipList[i], personHrefList[i])
+            if i < len(relationshipList) and i < len(personHrefList):
+                _append(relationship, prefix, relationshipList[i], personHrefList[i])
         return relationship
 
     def extractCaptionRelationship(self):
@@ -803,45 +851,6 @@ class Table:
                     entity.append([personHrefList[i], dictList[i]])
 
         return entity
-
-    def getPersonColList(self, deleteCol=False, removeHeader=False, getName=False) -> list:
-        """
-        获取人名列表
-        :param deleteCol:是否删除人名的这一列
-        :param removeHeader:是否去除表头,一般是属性栏
-        :param getName: 是否获取人名
-        :return:人名的那一列
-        """
-
-        def __clearPersonNameList(personNameList: list):
-            """
-            将人名变成清晰干净的名字
-            :param personNameList:
-            :return:
-            """
-            punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
-            for i in range(len(personNameList)):
-                personNameList[i] = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "",
-                                           personNameList[i])  # 去除括号
-                personNameList[i] = str(personNameList[i]).split("/")[0]
-                personNameList[i] = re.sub(punctuation, "", personNameList[i])
-            return personNameList
-
-        personList = []
-        personNameIndex = self.__getPersonNameIndex()
-        if personNameIndex != -1:
-            personList = [person for person in self.getColAt(personNameIndex)]  # 获得人名所在的表格列
-        if len(personList) == 0:
-            return personList
-        if removeHeader:
-            propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
-            personList.pop(propertyLineNum - 1)
-        if getName:
-            personList = [str(person.content) for person in personList]
-            personList = __clearPersonNameList(personList)  # 清理人名
-        if deleteCol:
-            self.deleteOneCol(personNameIndex)
-        return personList
 
     def __getPersonHrefList(self, personList: list):
         """
@@ -965,17 +974,17 @@ class TypeTree:
         """
         rowTypeCharacter = 0
         colTypeCharacter = 0
-        # n = min(table.rowNumber, table.colNumber)
-        # for i in range(n - 1):
-        #     rowTypeCharacter += self.VType(table.getRowAt(i), table.getRowAt(n - 1))
-        #     colTypeCharacter += self.VType(table.getColAt(i), table.getColAt(n - 1))
+        rowTypeCharacterList = []
+        colTypeCharacterList = []
         for i in range(table.rowNumber - 1):
-            rowTypeCharacter += self.VType(table.getRowAt(i), table.getRowAt(table.rowNumber - 1))
-        rowTypeCharacter = rowTypeCharacter / (table.rowNumber - 1)
+            rowTypeCharacterList.append(self.VType(table.getRowAt(i), table.getRowAt(table.rowNumber - 1)))
+        if rowTypeCharacter:
+            rowTypeCharacter = np.mean(rowTypeCharacterList)
 
         for j in range(table.colNumber - 1):
-            colTypeCharacter += self.VType(table.getColAt(j), table.getColAt(table.colNumber - 1))
-        colTypeCharacter = colTypeCharacter / (table.colNumber - 1)
+            colTypeCharacterList.append(self.VType(table.getColAt(j), table.getColAt(table.colNumber - 1)))
+        if colTypeCharacterList:
+            colTypeCharacter = np.mean(colTypeCharacterList)
         sumNumber = rowTypeCharacter + colTypeCharacter
         if sumNumber == 0:
             return rowTypeCharacter, colTypeCharacter
@@ -1103,7 +1112,3 @@ def changeWordTable2Table(table: DocTable) -> Table:
         rowList.append(colList)
     newTable = Table(rowNum - 1, maxColNum, caption, rowList)
     return newTable
-
-
-if __name__ == "__main__":
-    typeTree = TypeTree()

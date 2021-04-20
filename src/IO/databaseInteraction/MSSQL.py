@@ -17,7 +17,7 @@ GO
 use Webtable;
 CREATE TABLE pendingUrl(
 [ID] BIGINT PRIMARY KEY IDENTITY(1,1),
-[url] TEXT NOT NULL
+[url] NTEXT NOT NULL
 )
 
 CREATE TABLE personUrlAndHtml(
@@ -30,6 +30,11 @@ CREATE TABLE entityAndRelationship(
 [ID] BIGINT PRIMARY KEY IDENTITY(1,1),
 [entity] NTEXT,
 [relationship] NTEXT
+)
+
+CREATE TABLE uselessUrl(
+[ID] BIGINT PRIMARY KEY IDENTITY(1,1),
+[url] NTEXT NOT NULL
 )
 
 GO
@@ -50,15 +55,20 @@ class SqlServerProcessor:
         cursor = conn.cursor()
         if len(urlList):
             for i in range(len(urlList)):
-                urlList[i] = "('" + str(urlList[i]) + "')"
+                urlList[i] = f"('{str(urlList[i])}')"
             url = ",".join(urlList)
             sql = f"INSERT INTO {tableName}(url) VALUES {url}"
+            sql2 = f"SELECT COUNT(*) from {tableName}"
             try:
-                cursor.execute(sql)
-                conn.commit()
+                cursor.execute(sql2)
+                times = cursor.fetchall()[0][0]
+                if times <= 1000000:
+                    cursor.execute(sql)
+                    conn.commit()
             except Exception as ex:
                 conn.rollback()
                 # raise ex
+                print(ex)
             finally:
                 conn.close()
 
@@ -76,6 +86,7 @@ class SqlServerProcessor:
         except Exception as ex:
             conn.rollback()
             # raise ex
+            print(ex)
         finally:
             conn.close()
             return res
@@ -90,6 +101,7 @@ class SqlServerProcessor:
             conn.commit()
         except Exception as ex:
             conn.rollback()
+            print(ex)
             # raise ex
         finally:
             conn.close()
@@ -107,6 +119,7 @@ class SqlServerProcessor:
                 res.append([item[0], html.unescape(item[1])])
         except Exception as ex:
             conn.rollback()
+            print(ex)
             # raise ex
         finally:
             conn.close()
@@ -124,6 +137,7 @@ class SqlServerProcessor:
                 conn.commit()
             except Exception as ex:
                 conn.rollback()
+                print(ex)
                 # raise ex
             finally:
                 conn.close()
@@ -157,6 +171,7 @@ class SqlServerProcessor:
         except Exception as ex:
             conn.rollback()
             # raise ex
+            print(ex)
         finally:
             conn.close()
             return res

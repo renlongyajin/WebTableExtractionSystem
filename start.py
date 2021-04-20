@@ -1,7 +1,6 @@
 # -*- coding:utf-8 -*-
-
+import sys
 import os
-from os.path import dirname, abspath
 import threading
 import src.app.gol as gol
 from src.spider.WebSpider import WebSpider
@@ -10,6 +9,7 @@ from src.knowledgeStorage.peronGraph import PersonGraph
 
 
 def initial():
+    sys.path.append('../')  # 加入父目录所在路径
     gol.init()  # 先必须在主模块初始化（只在Main模块需要一次即可）
     projectPath = os.path.abspath(os.path.dirname(__file__))  # 当前项目所在路径
     fileRootPath = os.path.join(projectPath, r"file")  # 文件根目录
@@ -47,9 +47,9 @@ def initial():
 
 if __name__ == "__main__":
     initial()
-    # spider = WebSpider()
-    # threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
+    spider = WebSpider()
+    threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
     tableExtractor = TableExtract()
-    threading.Thread(target=tableExtractor.test).start()
-    # personGraph = PersonGraph()
-    # threading.Thread(target=personGraph.start).start()
+    threading.Thread(target=tableExtractor.start).start()
+    personGraph = PersonGraph()
+    threading.Thread(target=personGraph.start).start()

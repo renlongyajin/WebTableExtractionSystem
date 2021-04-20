@@ -5,6 +5,7 @@ import re
 from pyhanlp import HanLP
 
 from src.IO.fileInteraction.FileIO import FileIO
+from src.app import gol
 
 
 class TableItem:
@@ -82,7 +83,7 @@ class TableItem:
             self.type_ = "其他类型"
         return self.type_
 
-    def getTableItemWordType(self) -> str:
+    def getTableItemWordType(self):
         otherConfigurationPath = gol.get_value("otherConfigurationPath")
         if self.wordType:
             return self.wordType
@@ -94,6 +95,7 @@ class TableItem:
         numSum = 0
         for type_ in typeList:
             numSum += wordDict[type_]
-        typeString = "".join(typeList)
-        self.wordType = typeString
+        # typeString = "".join(typeList)
+        # self.wordType = typeString
+        self.wordType = numSum
         return self.wordType

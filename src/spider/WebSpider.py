@@ -1,10 +1,12 @@
 import os
 import random
+import threading
 from queue import Queue
+from time import sleep
 
 import requests.exceptions
 from pybloom_live import ScalableBloomFilter
-
+from urllib.parse import unquote
 import src.app.gol as gol
 from src.IO.fileInteraction.FileIO import FileIO
 from src.spider.UrlExtractor import UrlExtractor
@@ -23,8 +25,11 @@ class WebSpider:
         self.urlBloomPath = os.path.join(self.spiderFilePath, 'urlBloom.pkl')  # url布隆过滤器所在路径
         self.urlBloom = ScalableBloomFilter(initial_capacity=100, error_rate=0.001)  # 自动扩容的布隆过滤器
         self.maxCount = 10000  # 爬取的最大次数
+        self.sql = SqlServerProcessor()
         if not os.path.exists(self.urlBloomPath):
             FileIO.writePkl(self.urlBloomPath, self.urlBloom)
+        else:
+            self.urlBloom = FileIO.readPkl(self.urlBloomPath)
 
     def readSeed(self, SeedPath: str) -> int:
         """
@@ -63,13 +68,16 @@ class WebSpider:
         :param maxCount:最大爬取次数
         :return:
         """
+        # self.sql.clearAllTable()  # 重置当前所有
         self.maxCount = maxCount
+        self.startSpider()
+
+    def startSpider(self):
         # url抽取器
         _urlExtractor = UrlExtractor()
         # 读取种子链接到待爬队列
         SeedNum = self.readSeed(self.SeedPath)
-        sql = SqlServerProcessor()
-        # sql.clearAllTable()  # 重置当前所有
+        threading.Thread(target=self.dealWithUselessUrl).start()
         if SeedNum >= 0:
             # 计数
             count = 1
@@ -77,41 +85,78 @@ class WebSpider:
             while not self.pendingQueue.empty():
                 _url = self.pendingQueue.get_nowait()
                 SeedNum -= 1
-                print(f"正在抽取的url：{_url}")
+                print(f"正在抽取的url：{unquote(_url)}")
                 _html = self.getHtml(url=_url, timeout=1)
-
                 # 队列长度小于一半，则从数据库中补充到队列
-                if self.pendingQueue.qsize() < int(self.pendingQueue.maxsize / 2):
-                    for url in sql.getUrlFromDB(tableName="pendingUrl",
-                                                limitNum=int(self.pendingQueue.maxsize / 2)):
-                        self.pendingQueue.put_nowait(url)
-                    sql.deleteFromDBWithIdNum("pendingUrl", int(self.pendingQueue.maxsize / 2))  # 删除
-
+                self.addQueue(QueueName=self.pendingQueue, tableName='pendingUrl')
                 if _html:
                     # 从html中抽取url
                     _usefulUrlSet, _uselessUrlSet = _urlExtractor.extractUrl(_html)
                     if len(_usefulUrlSet):
-                        # 读取布隆过滤器
-                        self.urlBloom = FileIO.readPkl(self.urlBloomPath)
                         # 获取不在过滤器中的差异url列表,并将差异url列表写入布隆过滤器中
-                        differenceUrlList = []
-                        for url in _usefulUrlSet:
-                            if url not in self.urlBloom:
-                                self.urlBloom.add(url)
-                                differenceUrlList.append(url)
-                        FileIO.writePkl(self.urlBloomPath, self.urlBloom)
+                        differenceUrlList = self.getDifferenceFromBloom(_usefulUrlSet)
                         # 差集写入数据库
-                        sql.writeUrlToDB(tableName="pendingUrl", urlList=differenceUrlList)
+                        self.sql.writeUrlToDB(tableName="pendingUrl", urlList=differenceUrlList)
                         # 当前url：html写入到数据库中
                         if SeedNum < 0:
-                            sql.writeUrlAndHtmlToDB(tableName="personUrlAndHtml", url=_url, _html=_html)
+                            self.sql.writeUrlAndHtmlToDB(tableName="personUrlAndHtml", url=_url, _html=_html)
                             SeedNum = max(SeedNum, -1)
+
+                    if len(_uselessUrlSet):
+                        differenceUrlList = self.getDifferenceFromBloom(_uselessUrlSet)
+                        self.sql.writeUrlToDB(tableName="uselessUrl", urlList=differenceUrlList)
+                    FileIO.writePkl(self.urlBloomPath, self.urlBloom)
 
                 if count == self.maxCount:
                     return
                 else:
                     print(f"当前次数count:{count}")
                     count = count + 1
+
+    def dealWithUselessUrl(self, maxWaitTimes=10000, maxQueueSize=500):
+        waitTimes = maxWaitTimes
+        uselessUrlQueue = Queue(maxsize=maxQueueSize)
+        _urlExtractor = UrlExtractor()
+        while waitTimes:
+            self.addQueue(QueueName=uselessUrlQueue, tableName='uselessUrl')
+            while not uselessUrlQueue.empty():
+                _url = uselessUrlQueue.get_nowait()
+                _html = self.getHtml(url=_url, timeout=1)
+                if _html:
+                    _usefulUrlSet, _uselessUrlSet = _urlExtractor.extractUrl(_html)
+                    if len(_usefulUrlSet):
+                        differenceList = self.getDifferenceFromBloom(_usefulUrlSet)
+                        self.sql.writeUrlToDB(tableName="pendingUrl", urlList=differenceList)
+                    if len(_uselessUrlSet):
+                        differenceList = self.getDifferenceFromBloom(_uselessUrlSet)
+                        self.sql.writeUrlToDB(tableName="uselessUrl", urlList=differenceList)
+                self.addQueue(QueueName=uselessUrlQueue, tableName='uselessUrl')
+            sleep(1.0)
+            waitTimes -= 1
+
+    def getDifferenceFromBloom(self, urlSet: set) -> list:
+        """
+        从布隆过滤器中获取当前url集合的差集列表
+        :param urlSet: url集合
+        :return:
+        """
+        differenceUrlList = []
+        for url in urlSet:
+            if url not in self.urlBloom:
+                self.urlBloom.add(url)
+                differenceUrlList.append(url)
+        return differenceUrlList
+
+    def addQueue(self, QueueName: Queue, tableName: str):
+        # 队列长度小于一半，则从数据库中补充到队列
+        if QueueName.qsize() < int(QueueName.maxsize / 2):
+            for url in self.sql.getUrlFromDB(tableName, int(QueueName.maxsize / 2)):
+                QueueName.put_nowait(url)
+            self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
+
+    def __del__(self):
+        # 析构时写回布隆过滤器
+        FileIO.writePkl(self.urlBloomPath, self.urlBloom)
 
 
 def stopSpider(self):
