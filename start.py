@@ -2,6 +2,8 @@
 import sys
 import os
 import threading
+import time
+
 import src.app.gol as gol
 from src.spider.WebSpider import WebSpider
 from src.tableExtract.tableExtractor import TableExtract
@@ -15,6 +17,7 @@ def initial():
     fileRootPath = os.path.join(projectPath, r"file")  # 文件根目录
     spiderFilePath = os.path.join(fileRootPath, r'spider')  # 爬虫的文件所在路径
     tableDocPath = os.path.join(fileRootPath, r'tableDoc')  # 表格Doc路径
+    TriadPath = os.path.join(fileRootPath, r'Triad')  # 三元组文件路径
     configurationPath = os.path.join(fileRootPath, r'configuration')  # 设置文件路径
     BayesFilePath = os.path.join(fileRootPath, r'Bayes')  # 贝叶斯文件路径
     entityAndRelationshipPath = os.path.join(fileRootPath, r"entityAndRelationship")  # 三元组文件路径
@@ -29,6 +32,7 @@ def initial():
     gol.set_value('fileRootPath', fileRootPath)
     gol.set_value('spiderFilePath', spiderFilePath)
     gol.set_value('tableDocPath', tableDocPath)
+    gol.set_value('TriadPath', TriadPath)
     gol.set_value('configurationPath', configurationPath)
     gol.set_value('BayesFilePath', BayesFilePath)
     gol.set_value('entityAndRelationshipPath', entityAndRelationshipPath)
@@ -45,11 +49,23 @@ def initial():
             os.makedirs(pathDict[pathName])
 
 
+def deleteAll():
+    spider = WebSpider()
+    spider.sql.clearAllTable()
+
+
+def main():
+    spider = WebSpider()
+    tableExtractor = TableExtract()
+    personGraph = PersonGraph()
+    # tableExtractor.test()
+    spider.start(threadsNum=2, maxCount=float('inf'))  # 爬虫执行无数次
+    threading.Thread(target=spider.dealWithUselessUrl).start()
+    threading.Thread(target=tableExtractor.start).start()
+    threading.Thread(target=personGraph.start).start()
+
+
 if __name__ == "__main__":
     initial()
-    spider = WebSpider()
-    threading.Thread(target=spider.start, args=(float('inf'),)).start()  # 爬虫执行无数次
-    tableExtractor = TableExtract()
-    threading.Thread(target=tableExtractor.start).start()
-    personGraph = PersonGraph()
-    threading.Thread(target=personGraph.start).start()
+    # deleteAll()
+    main()

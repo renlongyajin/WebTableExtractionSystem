@@ -19,6 +19,20 @@ from src.tableExtract.TableItem import TableItem
 from src.tools.algorithm.exceptionCatch import except_output
 
 
+def _clearNameOrRel(string: str) -> str:
+    """
+    清理姓名和关系名,删除符号和括号
+    :param string:
+    :return:
+    """
+    if len(string) == 0 or string.isspace():
+        return ''
+    string = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】|\\<.*?\\>", "", string)  # 去除括号
+    punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
+    string = re.sub(punctuation, "", string)  # 去除人名和关系名中的  符号
+    return string
+
+
 def _append(aList: list, a: list, b: str, c: list):
     """
     将a,b,c添加到aList中
@@ -28,20 +42,6 @@ def _append(aList: list, a: list, b: str, c: list):
     :param c:[人名:url]
     :return:
     """
-
-    def _clearNameOrRel(string: str) -> str:
-        """
-        清理姓名和关系名,删除符号和括号
-        :param string:
-        :return:
-        """
-        if len(string) == 0 or string.isspace():
-            return ''
-        string = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", string)  # 去除括号
-        punctuation = "[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+"
-        string = re.sub(punctuation, "", string)  # 去除人名和关系名中的  符号
-        return string
-
     a[0] = _clearNameOrRel(a[0])
     b = _clearNameOrRel(b)
     c[0] = _clearNameOrRel(c[0])
@@ -754,7 +754,7 @@ class Table:
         FileIO.write2Json(list(personPropertySet), jsonFilePath)
 
     @except_output("表格专化为三元组时出错")
-    def extractEntityRelationship(self):
+    def extractEntityRelationship(self, getEntityTriad=False):
         """
         抽取实体关系
         :return:
@@ -763,13 +763,13 @@ class Table:
         relationship = []
         typeName = self.getTableType()
         if typeName == "个人信息表" or typeName == "实体关系表":
-            entity = self.extractEntity()
+            entity = self.extractEntity(getEntityTriad)
         elif typeName == "属性关系表":
             relationship = self.extractPropertyRelationship()
-            entity = self.extractEntity()
+            entity = self.extractEntity(getEntityTriad)
         elif typeName == "标题关系表":
             relationship = self.extractCaptionRelationship()
-            entity = self.extractEntity()
+            entity = self.extractEntity(getEntityTriad)
         else:  # 其他表
             # self.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\未抽取三元组的表格.docx")
             pass
@@ -827,7 +827,7 @@ class Table:
         entity = []
         if getEntityTriad:
             personNameList = self.getPersonColList(deleteCol=True, getName=True)  # 获取并删除人名
-            if self.colNumber >= 1:
+            if self.colNumber >= 1 and len(personNameList) != 0:
                 propertyIndex = self.discriminatePropertyLineNum(self.getUnfoldDirection()) - 1
                 propertyNameList = self.getPropertyList(isPropertyName=True)  # 获取除了人名之外的，其余的属性列表
                 propertyLine = self.discriminatePropertyLineNum(self.getUnfoldDirection())  # 属性行所占的行数
@@ -843,6 +843,8 @@ class Table:
             if len(personNameList) == 0:
                 return entity
             personHrefList = self.__getPersonHrefList(self.getPersonColList(removeHeader=True))
+            for i in range(len(personHrefList)):
+                personHrefList[i][0] = _clearNameOrRel(personHrefList[i][0])
             dictList = self.__table2DictList(filtration=True, deletePersonName=True)
             if len(personNameList) == len(dictList):
                 for i in range(len(personNameList)):

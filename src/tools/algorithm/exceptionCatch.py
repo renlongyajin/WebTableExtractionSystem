@@ -14,8 +14,6 @@ def except_output(msg='异常信息'):
         def execept_print(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except requests.exceptions.Timeout as e:
-                print(e)
             except Exception as e:
                 sign = '=' * 60 + '\n'
                 errorTime = f'{sign}>>>异常时间：\t{datetime.now()}\n>>>异常函数：\t{func.__name__}\n>>>{msg}：\t{e}'

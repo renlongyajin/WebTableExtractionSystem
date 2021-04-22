@@ -1,6 +1,7 @@
 import json
 import re
 import time
+from pprint import pprint
 from queue import Queue
 from urllib.parse import unquote
 
@@ -27,6 +28,7 @@ class TableExtract:
              "ntch", "nth", "nto", "nts", "ntu", "nx", "nz"])
         self.nowName = ''
         self.nowUrl = ''
+        self.sql = SqlServerProcessor()
 
     def test(self):
         _tableDocPath = gol.get_value("tableDocPath")
@@ -34,11 +36,9 @@ class TableExtract:
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # 这是一个测试
         tempUrl = [
-            r"https://baike.baidu.com/item/%E8%B5%B5%E5%8C%A1%E8%83%A4/61716",  # 赵匡胤
-            r"https://baike.baidu.com/item/%E5%AD%94%E5%AD%90/1584"
+            r"https://baike.baidu.com/item/%E4%B8%81%E6%99%93%E7%89%A7",  # 丁晓牧
+            r"https://baike.baidu.com/item/%E5%BC%A0%E7%92%8B/5118614",  # 张樟
         ]
-        sql = SqlServerProcessor()
-        sql.clearAllTable()
         for url in tempUrl:
             html = WebSpider.getHtml(url)
             last = unquote(url.split('/')[-1])
@@ -51,28 +51,32 @@ class TableExtract:
                 table.prefix = self.nowName
                 if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
                     table = table.flip()
+                # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
                 table.clearTable()
                 entity, relationship = table.extractEntityRelationship()
+                print(entity)
+                print(relationship)
                 if len(entity) != 0 or len(relationship) != 0:
                     entityJson = json.dumps(entity, ensure_ascii=False)
                     relationshipJson = json.dumps(relationship, ensure_ascii=False)
-                    sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
+                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\entity.csv", entity, mode='a+')
+                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\relationship.csv", relationship, mode='a+')
+                    # FileIO.write2Json(entity, f"{gol.get_value('jsonPath')}\\entity.json", mode='a+')
+                    # FileIO.write2Json(relationship, f"{gol.get_value('jsonPath')}\\relationship.json", mode='a+')
+                    self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
             pass
 
     @except_output()
-    def start(self, maxWaitTimes=10000):
+    def start(self, maxWaitTimes=float('inf')):
+        print("开始抽取表格...")
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         maxSize = 200
         pendingQueue = Queue(maxSize)
-        sql = SqlServerProcessor()
-        waitTimes = maxWaitTimes  # 100s时间的等待,如果100s结束了，数据库中都没有数据，那么终止该程序
+        waitTimes = maxWaitTimes  # maxWaitTime次的等待,如果结束了，数据库中都没有数据，那么终止该程序
         while waitTimes:
-            for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(maxSize / 2)):
-                pendingQueue.put(data)
-            sql.deleteFromDBWithIdNum("personUrlAndHtml", int(maxSize / 2))
-
+            self.addQueue(pendingQueue, 'personUrlAndHtml')
             while not pendingQueue.empty():
                 waitTimes = maxWaitTimes
                 dataTuple = pendingQueue.get_nowait()
@@ -88,24 +92,21 @@ class TableExtract:
                     if table.isNormal() and table.isCorrect():
                         if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
                             table = table.flip()
-                        # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{name}__规整后.docx")
+                        # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
                         table.clearTable()
                         entity, relationship = table.extractEntityRelationship()
-                        if len(entity):
-                            print(entity)
-                        if len(relationship):
-                            print(relationship)
+                        # if len(entity):
+                        #     print(entity)
+                        # if len(relationship):
+                        #     print(relationship)
                         if len(entity) != 0 or len(relationship) != 0:
                             entityJson = json.dumps(entity, ensure_ascii=False)
                             relationshipJson = json.dumps(relationship, ensure_ascii=False)
-                            sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
+                            self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
 
-                if pendingQueue.qsize() < int(pendingQueue.maxsize / 2):
-                    for data in sql.getUrlAndHtmlFromDB("personUrlAndHtml", int(pendingQueue.maxsize / 2)):
-                        pendingQueue.put(data)
-                    sql.deleteFromDBWithIdNum("personUrlAndHtml", int(pendingQueue.maxsize / 2))
+                self.addQueue(pendingQueue, 'personUrlAndHtml')
 
-            time.sleep(1.0)
+            time.sleep(0.2)
             waitTimes -= 1
 
     def getTable(self, _html: str) -> list:
@@ -254,6 +255,13 @@ class TableExtract:
                             ATable.tableType = "个人信息表"
                         _tableList.append(ATable)
         return _tableList
+
+    def addQueue(self, QueueName: Queue, tableName: str):
+        # 队列长度小于一半，则从数据库中补充到队列
+        if QueueName.qsize() < int(QueueName.maxsize / 10):
+            for url in self.sql.getUrlAndHtmlFromDB(tableName, int(QueueName.maxsize / 2)):
+                QueueName.put(url)
+            self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
 
 
 def getCaption(_tag: Tag):

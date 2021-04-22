@@ -15,6 +15,7 @@ from src.tools.algorithm.exceptionCatch import except_output
 class PersonGraph:
     def __init__(self):
         self.g = Graph("http://localhost:7474", username="neo4j", password="h132271350570")  # 这里填自己的信息
+        self.sql = SqlServerProcessor()
         # self.g.delete_all()  # 将之前的图  全部删除
 
     def createNodesFromCsv(self, filename="entity.json"):
@@ -58,30 +59,52 @@ class PersonGraph:
         for entity in entityList:
             name = entity[0][0]
             url = entity[0][1]
-            entityDict = entity[1]
+            entityDict_ = entity[1]
             # -- create if not exists
             # 节点匹配对象
             matcher = NodeMatcher(self.g)
             # 匹配节点
-            node = matcher.match(label, name=name, url=url).first()
-            if node is None:
-                if len(url) == 0 or url.isspace():
-                    node = Node(label, **entityDict, name=name)
-                else:
-                    node = Node(label, **entityDict, name=name, url=url)
-                try:
+            try:
+                if name.endswith("氏"):
+                    node = matcher.match(label, name=name).first()
                     self.g.create(node)
-                    print(f"创建节点<{name}>")
-                except Exception as e:
-                    print(e)
-            else:
-                print(f"当前节点已经存在<{name}>")
+                    print(f">>>>创建节点<{name}>")
+                elif len(url) == 0 or url.isspace():
+                    node = matcher.match(label, name=name).first()
+                    if node is None:
+                        node = Node(label, **entityDict_, name=name)
+                        self.g.create(node)
+                        print(f">>>>创建节点<{name}>")
+                    else:
+                        self.fusionNode(node, entityDict_)
+                else:
+                    node = matcher.match(label, name=name, url=url).first()
+                    if node is None:
+                        node = matcher.match(label, name=name).first()
+                        if node:
+                            if node['url'] in url or url in node['url']:  # 如果url相互包含，则一定是同一个
+                                self.fusionNode(node, entityDict_)
+                                return
+                        node = Node(label, **entityDict_, name=name, url=url)
+                        self.g.create(node)
+                        print(f">>>>创建节点<{name}>")
+                    else:
+                        self.fusionNode(node, entityDict_)
+            except Exception as e:
+                print(e)
+
+    def fusionNode(self, node: Node, propertyDict: dict):
+        for key in propertyDict:
+            if key not in node:
+                node[key] = propertyDict[key]
+        self.g.merge(node)
+        print(f">>>>已经融合<{node['name']}>")
 
     def __createRelationship(self, start_node: Node, rel_name: str, end_node: Node):
         try:
             rel = Relationship(start_node, rel_name, end_node)
             self.g.create(rel)
-            print(f"创建关系<{start_node['name']},{rel_name},{end_node['name']}>")
+            print(f">>>>创建关系<{start_node['name']},{rel_name},{end_node['name']}>")
         except Exception as e:
             print(e)
 
@@ -117,16 +140,12 @@ class PersonGraph:
         return node
 
     @except_output()
-    def start(self, maxWaitTimes=100):
+    def start(self, maxWaitTimes=float('inf')):
+        print("开始构建知识图谱...")
         pendingQueue = Queue(maxsize=200)
         waitTimes = maxWaitTimes
-        sql = SqlServerProcessor()
         while waitTimes:
-            ERList = sql.readERFromDB('entityAndRelationship', int(pendingQueue.maxsize / 2))
-            sql.deleteFromDBWithIdNum("entityAndRelationship", int(pendingQueue.maxsize / 2))
-            for ER in ERList:
-                pendingQueue.put_nowait(ER)
-
+            self.addQueue(pendingQueue, 'entityAndRelationship')
             while not pendingQueue.empty():
                 waitTimes = maxWaitTimes
                 ER = pendingQueue.get_nowait()
@@ -137,10 +156,14 @@ class PersonGraph:
                 if relationshipTriadList is not None and len(relationshipTriadList) != 0:
                     self.__creteRelationshipsWithList(relationshipTriadList)
 
-                if pendingQueue.qsize() < int(pendingQueue.maxsize / 2):
-                    for data in sql.readERFromDB("entityAndRelationship", int(pendingQueue.maxsize / 2)):
-                        pendingQueue.put(data)
-                    sql.deleteFromDBWithIdNum("entityAndRelationship", int(pendingQueue.maxsize / 2))
+                self.addQueue(pendingQueue, 'entityAndRelationship')
 
-            time.sleep(1.0)
+            time.sleep(0.2)
             waitTimes -= 1
+
+    def addQueue(self, QueueName: Queue, tableName: str):
+        # 队列长度小于一半，则从数据库中补充到队列
+        if QueueName.qsize() < int(QueueName.maxsize / 10):
+            for url in self.sql.getERFromDB(tableName, int(QueueName.maxsize / 2)):
+                QueueName.put(url)
+            self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除

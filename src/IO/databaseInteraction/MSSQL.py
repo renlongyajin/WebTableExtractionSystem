@@ -51,23 +51,21 @@ class SqlServerProcessor:
 
     @except_output()
     def writeUrlToDB(self, tableName: str, urlList: list):
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
-        if len(urlList):
-            for i in range(len(urlList)):
-                urlList[i] = f"('{str(urlList[i])}')"
-            url = ",".join(urlList)
-            sql = f"INSERT INTO {tableName}(url) VALUES {url}"
+        if len(urlList) > 0:
+            sql = f"INSERT INTO {tableName}(url) VALUES (%s)"
             sql2 = f"SELECT COUNT(*) from {tableName}"
+            conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
             try:
+                cursor = conn.cursor()
                 cursor.execute(sql2)
                 times = cursor.fetchall()[0][0]
                 if times <= 1000000:
-                    cursor.execute(sql)
+                    for i in range(len(urlList)):
+                        urlList[i] = (str(urlList[i]))
+                    cursor.executemany(sql, urlList)
                     conn.commit()
             except Exception as ex:
                 conn.rollback()
-                # raise ex
                 print(ex)
             finally:
                 conn.close()
@@ -158,7 +156,7 @@ class SqlServerProcessor:
             conn.close()
 
     @except_output()
-    def readERFromDB(self, tableName: str, limitNum: int) -> list:
+    def getERFromDB(self, tableName: str, limitNum: int) -> list:
         conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
         cursor = conn.cursor()
         res = []
@@ -186,27 +184,13 @@ class SqlServerProcessor:
         4.删除 未抽取三元组的表格的docx文件
         :return:
         """
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
-        sql1 = "DELETE FROM pendingUrl"
-        sql2 = "DELETE FROM personUrlAndHtml"
-        sql3 = "DELETE FROM entityAndRelationship"
-        try:
-            cursor.execute(sql1)
-            cursor.execute(sql2)
-            cursor.execute(sql3)
-            conn.commit()
-        except Exception as ex:
-            conn.rollback()
-            # raise ex
-        finally:
-            conn.close()
+        print("开始删除所有表和记录文件...")
 
         # 为了方便查看效果，重置了url记录的布隆过滤器文件
         spiderFilePath = gol.get_value('spiderFilePath')
         urlBloomPath = os.path.join(spiderFilePath, 'urlBloom.pkl')  # url布隆过滤器所在路径
-        urlBloom = ScalableBloomFilter(initial_capacity=100, error_rate=0.001)  # 自动扩容的布隆过滤器
-        FileIO.writePkl(urlBloomPath, urlBloom)  # 重置
+        if os.path.exists(urlBloomPath):
+            os.remove(urlBloomPath)
 
         # 删除 实体三元组csv文件，关系三元组csv文件
         entityAndRelationshipPath = gol.get_value('entityAndRelationshipPath')
@@ -229,3 +213,21 @@ class SqlServerProcessor:
         # 删除知识图谱
         graph = Graph("http://localhost:7474", username="neo4j", password="h132271350570")  # 这里填自己的信息
         graph.delete_all()  # 将之前的图  全部删除
+
+        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
+        cursor = conn.cursor()
+        sql1 = "DELETE FROM pendingUrl"
+        sql2 = "DELETE FROM personUrlAndHtml"
+        sql3 = "DELETE FROM entityAndRelationship"
+        sql4 = "DELETE FROM uselessUrl"
+        try:
+            cursor.execute(sql1)
+            cursor.execute(sql2)
+            cursor.execute(sql3)
+            cursor.execute(sql4)
+            conn.commit()
+        except Exception as ex:
+            conn.rollback()
+            # raise ex
+        finally:
+            conn.close()

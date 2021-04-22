@@ -46,9 +46,14 @@ class UrlExtractor:
         """
         if url.startswith(self.DiscriminantHead):
             url = url.lstrip(self.DiscriminantHead)
-            url = unquote(url)
+            if len(url.split('/')) >= 2:
+                last = url.split('/')[-1]
+                name = url.split('/')[-2] if last.isdigit() else last
+            else:
+                name = url
+            name = unquote(name)
             # 对text文本进行人名识别
-            result = self.segment.seg(url)
+            result = self.segment.seg(name)
             if len(result) == 1:
                 for item in result:
                     if str(item.nature) == "nr":
@@ -65,5 +70,3 @@ class UrlExtractor:
             return True
         else:
             return False
-
-
