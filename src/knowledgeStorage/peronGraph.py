@@ -16,7 +16,7 @@ class PersonGraph:
     def __init__(self):
         self.g = Graph("http://localhost:7474", username="neo4j", password="h132271350570")  # 这里填自己的信息
         self.sql = SqlServerProcessor()
-        # self.g.delete_all()  # 将之前的图  全部删除
+        self.running = False
 
     def createNodesFromCsv(self, filename="entity.json"):
         entityAndRelationshipPath = gol.get_value('entityAndRelationshipPath')
@@ -141,12 +141,17 @@ class PersonGraph:
 
     @except_output()
     def start(self, maxWaitTimes=float('inf')):
+        self.running = True
         print("开始构建知识图谱...")
         pendingQueue = Queue(maxsize=200)
         waitTimes = maxWaitTimes
         while waitTimes:
+            if not self.running:
+                return
             self.addQueue(pendingQueue, 'entityAndRelationship')
             while not pendingQueue.empty():
+                if not self.running:
+                    return
                 waitTimes = maxWaitTimes
                 ER = pendingQueue.get_nowait()
                 entityList = json.loads(ER[0])
@@ -160,6 +165,9 @@ class PersonGraph:
 
             time.sleep(0.2)
             waitTimes -= 1
+
+    def stop(self):
+        self.running = False
 
     def addQueue(self, QueueName: Queue, tableName: str):
         # 队列长度小于一半，则从数据库中补充到队列

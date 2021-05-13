@@ -35,6 +35,7 @@ class TableExtract:
         self.pendingQueue = Queue(self.maxSize)
         self.urlList = []
         self.url2pathDict = {}
+        self.running = False
         self.url2pathDictPath = f"{gol.get_value('configurationPath')}\\url2pathDict.pkl"
         if not os.path.exists(self.url2pathDictPath):
             FileIO.writePkl(self.url2pathDictPath, self.url2pathDict)
@@ -83,14 +84,19 @@ class TableExtract:
 
     @except_output()
     def start(self, maxWaitTimes=float('inf')):
+        self.running = True
         print("开始抽取表格...")
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         waitTimes = maxWaitTimes  # maxWaitTime次的等待,如果结束了，数据库中都没有数据，那么终止该程序
         while waitTimes:
+            if not self.running:
+                return
             self.addQueue(self.pendingQueue, 'personUrlAndHtml')
             while not self.pendingQueue.empty():
+                if not self.running:
+                    return
                 waitTimes = maxWaitTimes
                 dataTuple = self.pendingQueue.get_nowait()
                 url = dataTuple[0]
@@ -123,6 +129,9 @@ class TableExtract:
 
             time.sleep(0.2)
             waitTimes -= 1
+
+    def stop(self):
+        self.running = False
 
     def getTable(self, _html: str) -> list:
         """

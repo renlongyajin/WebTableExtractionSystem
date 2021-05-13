@@ -33,6 +33,7 @@ class WebSpider:
         self.spiderCount = 1  # 爬虫爬取次数
         self.writeUrlCount = 1  # 写入Url次数
         self.seedQueue = Queue()  # 种子队列
+        self.running = False
         self.sql = SqlServerProcessor()
         if not os.path.exists(self.urlBloomPath):
             FileIO.writePkl(self.urlBloomPath, self.urlBloom)
@@ -86,22 +87,29 @@ class WebSpider:
         except Exception as e:
             print(e)
 
-    def start(self, threadsNum: int = 1, maxCount=10000):
+    def start(self, threadsNum: int = 1, maxCount=10000, IsDealWithSeed=True):
         """
         开启爬虫
+        :param IsDealWithSeed: 是否处理种子文件
         :param threadsNum:线程数
         :param maxCount:最大爬取次数
         :return:
         """
+        self.running = True
         requests.DEFAULT_RETRIES = 0  # 重试连接次数
         s = requests.session()
         s.keep_alive = False  # 关闭多余连接
         self.maxCount = maxCount
         # 读取种子链接到待爬队列
-        self.dealWithSeed()
+        if IsDealWithSeed:
+            self.dealWithSeed()
         for ID in range(1, threadsNum + 1):
             threading.Thread(target=self.startSpider, args=(ID,)).start()
         threading.Thread(target=self.writeQueue2Database).start()
+        threading.Thread(target=self.dealWithUselessUrl).start()
+
+    def stop(self):
+        self.running = False
 
     def dealWithSeed(self):
         self.readSeed(self.SeedPath)
@@ -125,8 +133,12 @@ class WebSpider:
         _urlExtractor = UrlExtractor()
         # BFS 广度优先遍历
         while True:
+            if not self.running:  # 运行状态检查
+                return
             self.addQueue(self.pendingQueue, "pendingUrl")
             while not self.pendingQueue.empty():
+                if not self.running:
+                    return
                 _url = str(self.pendingQueue.get())
                 print(f">>>>爬虫<{ID}>:正在抽取第<{self.spiderCount}>条url：{unquote(_url)}")
                 if self.spiderCount >= self.maxCount:
@@ -154,6 +166,8 @@ class WebSpider:
                     FileIO.writePkl(self.urlBloomPath, self.urlBloom)  # 布隆过滤器
 
                 while self.pendingQueue.empty():
+                    if not self.running:
+                        return
                     self.addQueue(self.pendingQueue, "pendingUrl")
 
     def writeQueue2Database(self, tableName: str = "pendingUrl"):
@@ -181,6 +195,8 @@ class WebSpider:
         uselessUrlQueue = Queue(maxsize=maxQueueSize)
         _urlExtractor = UrlExtractor()
         while waitTimes:
+            if not self.running:
+                return
             self.addQueue(QueueName=uselessUrlQueue, tableName='uselessUrl')
             while not uselessUrlQueue.empty():
                 _url = uselessUrlQueue.get_nowait()
@@ -227,8 +243,3 @@ class WebSpider:
     def __del__(self):
         # 析构时写回布隆过滤器
         FileIO.writePkl(self.urlBloomPath, self.urlBloom)
-
-
-def stopSpider(self):
-    # TODO:停止爬虫所在线程
-    pass

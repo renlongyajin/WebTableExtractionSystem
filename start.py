@@ -8,6 +8,7 @@ from src.knowledgeStorage.peronGraph import PersonGraph
 from src.spider.Bayes import Bayes
 from src.spider.WebSpider import WebSpider
 from src.tableExtract.tableExtractor import TableExtract
+from src.windows.MainWindows import startWindows
 
 
 def initial():
@@ -89,6 +90,5 @@ if __name__ == "__main__":
     # deleteAll()
     # main()
     # test()
-    # startWindows()
-    bayes = Bayes()
-    bayes.start()
+    startWindows()
+
