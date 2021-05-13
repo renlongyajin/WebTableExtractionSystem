@@ -151,16 +151,15 @@ class Bayes:
     def test(self):
         # urlRecord = FileIO.readPkl(self.urlRecordPath)
         # url1 = list(urlRecord)[0]
-        url1 = "https://baike.baidu.com/item/%E8%9B%8B%E7%99%BD%E8%B4%A8/309120"
-        html1 = WebSpider.getHtml(url1)
-        html1 = self.textPreTreat(html1)
-        print(self.predictOneText(html1))
+        while True:
+            url1 = input()
+            # url1 = "https://baike.baidu.com/item/%E8%9B%8B%E7%99%BD%E8%B4%A8/309120"
+            html1 = WebSpider.getHtml(url1)
+            html1 = self.textPreTreat(html1)
+            print(self.predictOneText(html1))
 
         # uselessUrlRecord = FileIO.readPkl(self.uselessUrlRecordPath)
         # url2 = list(uselessUrlRecord)[0]
         # html2 = WebSpider.getHtml(url2)
         # html2 = self.textPreTreat(html2)
         # print(self.predictOneText(html2))
-
-
-

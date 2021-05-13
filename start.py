@@ -1,13 +1,13 @@
 # -*- coding:utf-8 -*-
-import sys
 import os
+import sys
 import threading
-import time
 
 import src.app.gol as gol
+from src.knowledgeStorage.peronGraph import PersonGraph
+from src.spider.Bayes import Bayes
 from src.spider.WebSpider import WebSpider
 from src.tableExtract.tableExtractor import TableExtract
-from src.knowledgeStorage.peronGraph import PersonGraph
 
 
 def initial():
@@ -17,6 +17,8 @@ def initial():
     fileRootPath = os.path.join(projectPath, r"file")  # 文件根目录
     spiderFilePath = os.path.join(fileRootPath, r'spider')  # 爬虫的文件所在路径
     tableDocPath = os.path.join(fileRootPath, r'tableDoc')  # 表格Doc路径
+    tablePklPath = os.path.join(fileRootPath, r'tablePkl')  # 表格pkl路径
+    imagesPath = os.path.join(fileRootPath, r'images')  # 图片所在路径
     TriadPath = os.path.join(fileRootPath, r'Triad')  # 三元组文件路径
     configurationPath = os.path.join(fileRootPath, r'configuration')  # 设置文件路径
     BayesFilePath = os.path.join(fileRootPath, r'Bayes')  # 贝叶斯文件路径
@@ -32,6 +34,8 @@ def initial():
     gol.set_value('fileRootPath', fileRootPath)
     gol.set_value('spiderFilePath', spiderFilePath)
     gol.set_value('tableDocPath', tableDocPath)
+    gol.set_value('tablePklPath', tablePklPath)
+    gol.set_value('imagesPath', imagesPath)
     gol.set_value('TriadPath', TriadPath)
     gol.set_value('configurationPath', configurationPath)
     gol.set_value('BayesFilePath', BayesFilePath)
@@ -65,7 +69,26 @@ def main():
     threading.Thread(target=personGraph.start).start()
 
 
+def test():
+    tableExtractor = TableExtract()
+    tableExtractor.test()
+    # filenameList = [
+    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\新家谱登记表.docx",
+    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\zhailingwushi.docx",
+    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\旧版马吴登记表.docx",
+    #     r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\example.docx"
+    # ]
+    # for filename in filenameList:
+    #     tableList = extractWordTable(filename)
+    #     for table in tableList:
+    #         table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\myTest.docx")
+
+
 if __name__ == "__main__":
     initial()
     # deleteAll()
-    main()
+    # main()
+    # test()
+    # startWindows()
+    bayes = Bayes()
+    bayes.start()

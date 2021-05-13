@@ -1,25 +1,29 @@
 import os
 import random
 import threading
+import time
 from queue import Queue
 from time import sleep
 from urllib.error import URLError, HTTPError
+from urllib.parse import unquote
 
 import requests.exceptions
 from pybloom_live import ScalableBloomFilter
-from urllib.parse import unquote
+from requests.adapters import HTTPAdapter
+
 import src.app.gol as gol
+from src.IO.databaseInteraction.MSSQL import SqlServerProcessor
 from src.IO.fileInteraction.FileIO import FileIO
 from src.spider.UrlExtractor import UrlExtractor
 from src.spider.UserAgent import USER_AGENTS
 from src.tools.algorithm.exceptionCatch import except_output
-from src.IO.databaseInteraction.MSSQL import SqlServerProcessor
 
 
 class WebSpider:
     def __init__(self):
         self.queueLength = 5000  # 队列长度
         self.pendingQueue = Queue(self.queueLength)  # 待处理队列
+        self.waitWriteQueue = Queue(self.queueLength)  # 等待写入的队列
         self.projectPath = gol.get_value("projectPath")
         self.spiderFilePath = gol.get_value("spiderFilePath")
         self.SeedPath = os.path.join(self.spiderFilePath, 'PersonUrlSeedLink.txt')  # 种子文件路径
@@ -60,7 +64,15 @@ class WebSpider:
         :return: 返回的html
         """
         try:
-            response = requests.get(url=url, headers={'User-Agent': random.choice(uer_agent)}, timeout=timeout)
+            sess = requests.Session()
+            sess.mount('http://', HTTPAdapter(max_retries=3))
+            sess.mount('https://', HTTPAdapter(max_retries=3))
+            sess.keep_alive = False  # 关闭多余连接
+            response = requests.get(url=url,
+                                    headers={'User-Agent': random.choice(uer_agent),
+                                             'Connection': 'close'},
+                                    timeout=timeout,
+                                    )
             if response.status_code == 200:
                 return response.content.decode('utf-8')
         except requests.exceptions.ConnectTimeout as e:
@@ -89,6 +101,7 @@ class WebSpider:
         self.dealWithSeed()
         for ID in range(1, threadsNum + 1):
             threading.Thread(target=self.startSpider, args=(ID,)).start()
+        threading.Thread(target=self.writeQueue2Database).start()
 
     def dealWithSeed(self):
         self.readSeed(self.SeedPath)
@@ -111,34 +124,45 @@ class WebSpider:
         # url抽取器
         _urlExtractor = UrlExtractor()
         # BFS 广度优先遍历
-        self.addQueue(self.pendingQueue, "pendingUrl")
-        while not self.pendingQueue.empty():
-            _url = str(self.pendingQueue.get())
-            print(f">>>>爬虫<{ID}>:正在抽取第<{self.spiderCount}>条url：{unquote(_url)}")
-            if self.spiderCount >= self.maxCount:
-                return
-            self.spiderCount += 1
-            _html = self.getHtml(url=_url, timeout=1)
-            # 队列长度小于一半，则从数据库中补充到队列
-            self.addQueue(QueueName=self.pendingQueue, tableName='pendingUrl')
-            if _html:
-                self.sql.writeUrlAndHtmlToDB(tableName="personUrlAndHtml", url=_url, _html=_html)
-                # print(f">>>>爬虫<{ID}>:正在写入第<{self.writeUrlCount}>条url：{unquote(_url)}")
-                # self.writeUrlCount += 1
-                # 从html中抽取url
-                _usefulUrlSet, _uselessUrlSet = _urlExtractor.extractUrl(_html)
-                # 当前url和html写入到数据库中
-                if len(_usefulUrlSet):
-                    # 获取不在过滤器中的差异url列表,并将差异url列表写入布隆过滤器中
-                    differenceUrlList = self.getDifferenceFromBloom(_usefulUrlSet)
-                    # 差集写入数据库
-                    self.sql.writeUrlToDB(tableName="pendingUrl", urlList=differenceUrlList)
+        while True:
+            self.addQueue(self.pendingQueue, "pendingUrl")
+            while not self.pendingQueue.empty():
+                _url = str(self.pendingQueue.get())
+                print(f">>>>爬虫<{ID}>:正在抽取第<{self.spiderCount}>条url：{unquote(_url)}")
+                if self.spiderCount >= self.maxCount:
+                    return
+                self.spiderCount += 1
+                _html = self.getHtml(url=_url, timeout=1)
+                # 队列长度小于一半，则从数据库中补充到队列
+                self.addQueue(QueueName=self.pendingQueue, tableName='pendingUrl')
+                if _html:
+                    self.sql.writeUrlAndHtmlToDB(tableName="personUrlAndHtml", url=_url, _html=_html)
+                    # 从html中抽取url
+                    _usefulUrlSet, _uselessUrlSet = _urlExtractor.extractUrl(_html)
+                    # 当前url和html写入到数据库中
+                    if len(_usefulUrlSet):
+                        # 获取不在过滤器中的差异url列表,并将差异url列表写入布隆过滤器中
+                        differenceUrlList = self.getDifferenceFromBloom(_usefulUrlSet)
+                        # 差集写入数据库
+                        # self.sql.writeUrlToDB(tableName="pendingUrl", urlList=differenceUrlList)
+                        for url in differenceUrlList:
+                            self.waitWriteQueue.put(url)
+                    if len(_uselessUrlSet):
+                        possibleUrl = self.__getPossibleUrl(_uselessUrlSet)
+                        differenceUrlList = self.getDifferenceFromBloom(possibleUrl)
+                        self.sql.writeUrlToDB(tableName="uselessUrl", urlList=differenceUrlList)
+                    FileIO.writePkl(self.urlBloomPath, self.urlBloom)  # 布隆过滤器
 
-                if len(_uselessUrlSet):
-                    possibleUrl = self.__getPossibleUrl(_uselessUrlSet)
-                    differenceUrlList = self.getDifferenceFromBloom(possibleUrl)
-                    self.sql.writeUrlToDB(tableName="uselessUrl", urlList=differenceUrlList)
-                FileIO.writePkl(self.urlBloomPath, self.urlBloom)  # 布隆过滤器
+                while self.pendingQueue.empty():
+                    self.addQueue(self.pendingQueue, "pendingUrl")
+
+    def writeQueue2Database(self, tableName: str = "pendingUrl"):
+        while True:
+            if not self.waitWriteQueue.empty():
+                urlList = list(self.waitWriteQueue.queue)
+                self.waitWriteQueue.queue.clear()
+                self.sql.writeUrlToDB(tableName, urlList)
+            time.sleep(0.3)
 
     @staticmethod
     def __getPossibleUrl(urlSet: set):
@@ -190,15 +214,19 @@ class WebSpider:
         return differenceUrlList
 
     def addQueue(self, QueueName: Queue, tableName: str):
-        # 队列长度小于一半，则从数据库中补充到队列
+        # 队列长度小于1/10，则从数据库中补充到队列
         if QueueName.qsize() < int(QueueName.maxsize / 10):
-            for url in self.sql.getUrlFromDB(tableName, int(QueueName.maxsize / 2)):
-                QueueName.put(url)
-            self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
+            urls = self.sql.getUrlFromDB(tableName, int(QueueName.maxsize / 2))
+            if urls is None or len(urls) == 0:
+                pass
+            else:
+                for url in urls:
+                    QueueName.put(url)
+                self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
 
-    # def __del__(self):
-    #     # 析构时写回布隆过滤器
-    #     FileIO.writePkl(self.urlBloomPath, self.urlBloom)
+    def __del__(self):
+        # 析构时写回布隆过滤器
+        FileIO.writePkl(self.urlBloomPath, self.urlBloom)
 
 
 def stopSpider(self):

@@ -1,5 +1,7 @@
 import html
 import os
+import sys
+import traceback
 
 from py2neo import Graph
 from pybloom_live import ScalableBloomFilter
@@ -8,6 +10,7 @@ from src.IO.fileInteraction.FileIO import FileIO
 from src.app import gol
 import pymssql
 
+import pyodbc
 from src.tools.algorithm.exceptionCatch import except_output
 
 """
@@ -42,83 +45,103 @@ GO
 
 
 class SqlServerProcessor:
-    def __init__(self, server: str = r"192.168.43.37", user=r"humenglong", password: str = "E=Mc2HMLZAZKN233",
+    def __init__(self, server: str = r"192.168.43.37",
+                 user=r"humenglong",
+                 password: str = "E=Mc2HMLZAZKN233",
                  database: str = "WebTable"):
         self.server = server  # 数据库服务器名称或IP
         self.user = user  # 用户名
         self.password = password  # 密码
         self.database = database  # 数据库名称
+        self.driver = '{ODBC Driver 17 for SQL Server}'
+
+    def __connect(self):
+        try:
+            # conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
+            conn = pyodbc.connect(
+                'DRIVER={};SERVER={};DATABASE={};UID={};PWD={}'.format(self.driver, self.server, self.database,
+                                                                       self.user, self.password))
+            # cursor = conn.cursor()
+            return conn
+        except Exception as e:
+            print("连接数据库失败", e)
+            traceback.print_exc(file=sys.stdout)
 
     @except_output()
     def writeUrlToDB(self, tableName: str, urlList: list):
         if len(urlList) > 0:
-            sql = f"INSERT INTO {tableName}(url) VALUES (%s)"
-            sql2 = f"SELECT COUNT(*) from {tableName}"
-            conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
+            sql1 = f"INSERT INTO {tableName}(url) VALUES (?)"
+            sql2 = f"SELECT COUNT(*) from {tableName} WITH(NOLock)"
+            conn = self.__connect()
+            if not conn:
+                return
             try:
                 cursor = conn.cursor()
                 cursor.execute(sql2)
                 times = cursor.fetchall()[0][0]
                 if times <= 1000000:
                     for i in range(len(urlList)):
-                        urlList[i] = (str(urlList[i]))
-                    cursor.executemany(sql, urlList)
+                        urlList[i] = tuple([str(urlList[i])])
+                    # cursor.fast_executemany = True
+                    cursor.executemany(sql1, urlList)
                     conn.commit()
             except Exception as ex:
                 conn.rollback()
-                print(ex)
+                print("<writeUrlToDB>数据库操作出错:", ex)
             finally:
                 conn.close()
 
     @except_output()
     def getUrlFromDB(self, tableName: str, limitNum: int) -> list:
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
         res = []
+        conn = self.__connect()
+        if not conn:
+            return []
         try:
-            sql = f"SELECT url FROM {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName})"
+            sql = f"SELECT url FROM {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName}) "
+            cursor = conn.cursor()
             cursor.execute(sql)
             urls = cursor.fetchall()
             for url in urls:
                 res.append(url[0])
         except Exception as ex:
             conn.rollback()
-            # raise ex
-            print(ex)
+            print("<getUrlFromDB>数据库操作出错:", ex)
         finally:
             conn.close()
             return res
 
     @except_output()
     def deleteFromDBWithIdNum(self, tableName: str, limitNum: int):
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
+        conn = self.__connect()
         try:
             sql = f"DELETE {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName})"
+            cursor = conn.cursor()
             cursor.execute(sql)
             conn.commit()
         except Exception as ex:
             conn.rollback()
-            print(ex)
+            print("<deleteFromDBWithIdNum>数据库操作出错:", ex)
             # raise ex
         finally:
             conn.close()
 
     @except_output()
     def getUrlAndHtmlFromDB(self, tableName: str, limitNum: int) -> list:
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
         res = []
+        conn = self.__connect()
+        if not conn:
+            return []
         try:
             sql = f"SELECT url,html FROM {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName})"
+            cursor = conn.cursor()
             cursor.execute(sql)
             rows = cursor.fetchall()
             for item in rows:
                 res.append([item[0], html.unescape(item[1])])
         except Exception as ex:
             conn.rollback()
-            print(ex)
-            # raise ex
+            print("<getUrlAndHtmlFromDB>数据库操作出错:", ex)
         finally:
             conn.close()
             return res
@@ -126,50 +149,54 @@ class SqlServerProcessor:
     @except_output()
     def writeUrlAndHtmlToDB(self, tableName: str, url: str, _html: str):
         if len(_html):
-            conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-            cursor = conn.cursor()
+            conn = self.__connect()
+            if not conn:
+                return
             htmlCode = html.escape(_html)
             sql = f"INSERT INTO {tableName}(url,html) VALUES ('{url}','{htmlCode}')"
             try:
+                cursor = conn.cursor()
                 cursor.execute(sql)
                 conn.commit()
             except Exception as ex:
                 conn.rollback()
-                print(ex)
+                print("<writeUrlAndHtmlToDB>数据库操作出错:", ex)
                 # raise ex
             finally:
                 conn.close()
 
     @except_output()
     def writeER2DB(self, tableName: str, entityJson: str, relationshipJson: str):
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
+        conn = self.__connect()
+        if not conn:
+            return
         sql = f"INSERT INTO {tableName}(entity,relationship) VALUES ('{entityJson}','{relationshipJson}')"
         try:
+            cursor = conn.cursor()
             cursor.execute(sql)
             conn.commit()
         except Exception as ex:
             conn.rollback()
-            print(ex)
-            # raise ex
+            print("<writeER2DB>数据库操作出错:", ex)
         finally:
             conn.close()
 
     @except_output()
     def getERFromDB(self, tableName: str, limitNum: int) -> list:
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
-        cursor = conn.cursor()
         res = []
+        conn = self.__connect()
+        if not conn:
+            return res
         try:
             sql = f"SELECT entity,relationship FROM {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName})"
+            cursor = conn.cursor()
             cursor.execute(sql)
             rows = cursor.fetchall()
             for item in rows:
                 res.append([item[0], item[1]])
         except Exception as ex:
             conn.rollback()
-            # raise ex
-            print(ex)
+            print("<getERFromDB>数据库操作出错:", ex)
         finally:
             conn.close()
             return res
@@ -214,7 +241,9 @@ class SqlServerProcessor:
         graph = Graph("http://localhost:7474", username="neo4j", password="h132271350570")  # 这里填自己的信息
         graph.delete_all()  # 将之前的图  全部删除
 
-        conn = pymssql.connect(self.server, self.user, self.password, self.database, charset='utf8')
+        conn = self.__connect()
+        if not conn:
+            return
         cursor = conn.cursor()
         sql1 = "DELETE FROM pendingUrl"
         sql2 = "DELETE FROM personUrlAndHtml"

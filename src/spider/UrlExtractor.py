@@ -1,7 +1,6 @@
 from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
-import re
 from pyhanlp import HanLP  # 使用前导入 HanLP工具
 
 
@@ -58,6 +57,7 @@ class UrlExtractor:
                 for item in result:
                     if str(item.nature) == "nr":
                         return 1.0
+
         return 0.0
 
     def IsRelevant(self, url: str) -> bool:
@@ -70,3 +70,5 @@ class UrlExtractor:
             return True
         else:
             return False
+
+

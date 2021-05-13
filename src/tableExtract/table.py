@@ -613,6 +613,15 @@ class Table:
         paragraph = doc.add_paragraph()
         doc.save(filepath)
 
+    def writeTable2Pkl(self, filepath: str, mode="wb+"):
+        """
+        当前表格写入pkl文件
+        :param filepath: 文件路径
+        :param mode:存储模式
+        :return:
+        """
+        FileIO.writePkl(filepath=filepath, data=self, mode=mode)
+
     @except_output()
     def __table2DictList(self, filtration=False, deletePersonName=False) -> list:
         """
@@ -753,7 +762,7 @@ class Table:
         personPropertySet = personPropertySet.union(tablePropertySet)
         FileIO.write2Json(list(personPropertySet), jsonFilePath)
 
-    @except_output("表格专化为三元组时出错")
+    @except_output("从表格中抽取实体和关系时出错")
     def extractEntityRelationship(self, getEntityTriad=False):
         """
         抽取实体关系
@@ -1037,7 +1046,7 @@ class TypeTree:
         return res / m
 
 
-def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
+def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
     """
     将tag标签转化为table数据结构
     :param prefix: 前缀
@@ -1051,7 +1060,7 @@ def changeTig2Table(tag: Tag, caption=None, prefix=None) -> Table:
     rowMaxSize = 0
     colLenList = []
     colIndex = rowIndex = 0
-    table.name = caption  # 命名
+    table.name = str(caption)  # 命名
     table.prefix = prefix
     for rowData in tag.children:
         innerList = []
@@ -1114,3 +1123,4 @@ def changeWordTable2Table(table: DocTable) -> Table:
         rowList.append(colList)
     newTable = Table(rowNum - 1, maxColNum, caption, rowList)
     return newTable
+

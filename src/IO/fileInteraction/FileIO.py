@@ -1,6 +1,7 @@
 import csv
 import json
 import pickle
+import sys
 
 from bs4 import Tag
 
@@ -26,6 +27,31 @@ class FileIO:
                 return pickle.load(f)
         except Exception as e:
             print("读取pkl文件失败", e)
+
+    @staticmethod
+    def writeList2Pkl(filepath: str, dataList: list):
+        for data in dataList:
+            try:
+                with open(filepath, 'ab') as f:
+                    pickle.dump(data, f)
+            except Exception as e:
+                print("列表写入pkl文件失败", e)
+
+    @staticmethod
+    def readPkl2List(filepath: str) -> list:
+        resList = []
+        try:
+            with open(filepath, 'rb') as f:
+                while True:
+                    try:
+                        data = pickle.load(f)
+                        resList.append(data)
+                    except EOFError:
+                        break
+        except Exception as e:
+            print("读取pkl文件到列表失败", e)
+        finally:
+            return resList
 
     @staticmethod
     def writeTag2Html(filepath: str, tag: Tag):

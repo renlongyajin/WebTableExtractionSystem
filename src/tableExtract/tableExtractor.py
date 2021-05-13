@@ -1,7 +1,9 @@
 import json
+import os
+import random
 import re
 import time
-from pprint import pprint
+from copy import deepcopy
 from queue import Queue
 from urllib.parse import unquote
 
@@ -29,6 +31,15 @@ class TableExtract:
         self.nowName = ''
         self.nowUrl = ''
         self.sql = SqlServerProcessor()
+        self.maxSize = 200
+        self.pendingQueue = Queue(self.maxSize)
+        self.urlList = []
+        self.url2pathDict = {}
+        self.url2pathDictPath = f"{gol.get_value('configurationPath')}\\url2pathDict.pkl"
+        if not os.path.exists(self.url2pathDictPath):
+            FileIO.writePkl(self.url2pathDictPath, self.url2pathDict)
+        else:
+            self.url2pathDict = FileIO.readPkl(self.url2pathDictPath)
 
     def test(self):
         _tableDocPath = gol.get_value("tableDocPath")
@@ -36,6 +47,7 @@ class TableExtract:
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         # 这是一个测试
         tempUrl = [
+            r"https://baike.baidu.com/item/%E5%AD%94%E5%AD%90/1584",  # 孔子
             r"https://baike.baidu.com/item/%E4%B8%81%E6%99%93%E7%89%A7",  # 丁晓牧
             r"https://baike.baidu.com/item/%E5%BC%A0%E7%92%8B/5118614",  # 张樟
         ]
@@ -45,25 +57,28 @@ class TableExtract:
             self.nowName = unquote(url.split('/')[-2]) if last.isdigit() else last
             self.nowUrl = url
             _tableList = self.getTable(html)
-            for table in _tableList:
-                table.hrefMap[self.nowName] = self.nowUrl
-                table = table.extendTable()
-                table.prefix = self.nowName
-                if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
-                    table = table.flip()
-                # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
-                table.clearTable()
-                entity, relationship = table.extractEntityRelationship()
-                print(entity)
-                print(relationship)
-                if len(entity) != 0 or len(relationship) != 0:
-                    entityJson = json.dumps(entity, ensure_ascii=False)
-                    relationshipJson = json.dumps(relationship, ensure_ascii=False)
-                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\entity.csv", entity, mode='a+')
-                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\relationship.csv", relationship, mode='a+')
-                    # FileIO.write2Json(entity, f"{gol.get_value('jsonPath')}\\entity.json", mode='a+')
-                    # FileIO.write2Json(relationship, f"{gol.get_value('jsonPath')}\\relationship.json", mode='a+')
-                    self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
+            self.writeRecords(_tableList)
+            # for table in _tableList:
+            #     table.hrefMap[self.nowName] = self.nowUrl
+            #     table = table.extendTable()
+            #     table.prefix = self.nowName
+            #     if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
+            #         table = table.flip()
+            #     # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
+            #     table.clearTable()
+            #     entity, relationship = table.extractEntityRelationship()
+            #     if entity is not None and len(entity) != 0:
+            #         print(entity)
+            #     if relationship is not None and len(relationship) != 0:
+            #         print(relationship)
+            #     if len(entity) != 0 or len(relationship) != 0:
+            #         entityJson = json.dumps(entity, ensure_ascii=False)
+            #         relationshipJson = json.dumps(relationship, ensure_ascii=False)
+            #         # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\entity.csv", entity, mode='a+')
+            #         # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\relationship.csv", relationship, mode='a+')
+            #         # FileIO.write2Json(entity, f"{gol.get_value('jsonPath')}\\entity.json", mode='a+')
+            #         # FileIO.write2Json(relationship, f"{gol.get_value('jsonPath')}\\relationship.json", mode='a+')
+            #         self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
             pass
 
     @except_output()
@@ -72,21 +87,22 @@ class TableExtract:
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
         entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
-        maxSize = 200
-        pendingQueue = Queue(maxSize)
         waitTimes = maxWaitTimes  # maxWaitTime次的等待,如果结束了，数据库中都没有数据，那么终止该程序
         while waitTimes:
-            self.addQueue(pendingQueue, 'personUrlAndHtml')
-            while not pendingQueue.empty():
+            self.addQueue(self.pendingQueue, 'personUrlAndHtml')
+            while not self.pendingQueue.empty():
                 waitTimes = maxWaitTimes
-                dataTuple = pendingQueue.get_nowait()
+                dataTuple = self.pendingQueue.get_nowait()
                 url = dataTuple[0]
                 html = dataTuple[1]
                 last = unquote(url.split('/')[-1])
                 self.nowName = unquote(url.split('/')[-2]) if last.isdigit() else last
                 self.nowUrl = url
                 _tableList = self.getTable(html)
-                for table in _tableList:
+
+                entityListAndRelationshipList = []
+                _extendTableList = deepcopy(_tableList)
+                for table in _extendTableList:
                     table.hrefMap[self.nowName] = self.nowUrl
                     table = table.extendTable()
                     if table.isNormal() and table.isCorrect():
@@ -95,16 +111,15 @@ class TableExtract:
                         # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
                         table.clearTable()
                         entity, relationship = table.extractEntityRelationship()
-                        # if len(entity):
-                        #     print(entity)
-                        # if len(relationship):
-                        #     print(relationship)
                         if len(entity) != 0 or len(relationship) != 0:
                             entityJson = json.dumps(entity, ensure_ascii=False)
                             relationshipJson = json.dumps(relationship, ensure_ascii=False)
+                            entityListAndRelationshipList.append([entity, relationship])
                             self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
 
-                self.addQueue(pendingQueue, 'personUrlAndHtml')
+                self.writeRecords(_tableList, entityListAndRelationshipList)
+
+                self.addQueue(self.pendingQueue, 'personUrlAndHtml')
 
             time.sleep(0.2)
             waitTimes -= 1
@@ -119,6 +134,7 @@ class TableExtract:
         _html, _soup = htmlPreTreat(_html)
         _tableList = self.extractNonstandardTable(_soup)
         tagTable = _soup.find_all(name="table")
+
         for table in tagTable:
             caption, prefix = getCaption(table)
             if self.throughHeuristicRule(table):
@@ -211,7 +227,7 @@ class TableExtract:
 
     def extractListTable(self, tag: Tag, ruleDict: dict):
         _tableList = []
-        if "class" in ruleDict.keys():
+        if "class" in ruleDict:
             class_name = ruleDict["class"]
             tagsList = tag.find_all(attrs={"class": re.compile(f"{class_name}")})
             for tags in tagsList:
@@ -259,9 +275,33 @@ class TableExtract:
     def addQueue(self, QueueName: Queue, tableName: str):
         # 队列长度小于一半，则从数据库中补充到队列
         if QueueName.qsize() < int(QueueName.maxsize / 10):
-            for url in self.sql.getUrlAndHtmlFromDB(tableName, int(QueueName.maxsize / 2)):
+            urlAndHtml = self.sql.getUrlAndHtmlFromDB(tableName, int(QueueName.maxsize / 2))
+            for url in urlAndHtml:
                 QueueName.put(url)
             self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
+
+    def addUrlList(self, url: str):
+        if len(self.urlList) >= self.maxSize:
+            tempUrl = self.urlList[0]
+            self.urlList = self.urlList[1:]
+            if tempUrl in self.url2pathDict:
+                filepath = self.url2pathDict[tempUrl]
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                del self.url2pathDict[tempUrl]
+        self.urlList.append(url)
+
+    def writeRecords(self, tableList: list, entityAndRelationshipList: list):
+        if len(tableList) != 0:
+            url = unquote(self.nowUrl)
+            self.url2pathDict = FileIO.readPkl(self.url2pathDictPath)
+            tableId = time.strftime('%Y_%H_%M_%S', time.localtime()) + str(random.randint(0, 100))
+            tableListPath = f"{gol.get_value('tablePklPath')}\\{self.nowName}_{tableId}.pkl"
+            self.url2pathDict[url] = tableListPath
+            self.addUrlList(url)
+            FileIO.writePkl(self.url2pathDictPath, self.url2pathDict)
+            mergeList = [tableList, entityAndRelationshipList]
+            FileIO.writePkl(tableListPath, mergeList)
 
 
 def getCaption(_tag: Tag):
@@ -310,10 +350,8 @@ def extractWordTable(filename: str) -> list:
     :param filename: 文件名，人名
     :return:
     """
-    tableDocPath = gol.get_value("tableDocPath")
-    docPath = f"{tableDocPath}\\{filename}.docx"
     try:
-        doc = Document(docPath)
+        doc = Document(filename)
         tableList = []
         for table in doc.tables:
             tableList.append(changeWordTable2Table(table))
