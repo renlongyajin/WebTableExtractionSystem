@@ -17,7 +17,7 @@ class FileIO:
                 pickle.dump(data, f)
                 return True
         except Exception as e:
-            print("写入pkl文件失败", e)
+            print(f"写入pkl文件<{filepath}>失败", e)
             return False
 
     @staticmethod
@@ -26,7 +26,7 @@ class FileIO:
             with open(filepath, mode=mode) as f:
                 return pickle.load(f)
         except Exception as e:
-            print("读取pkl文件失败", e)
+            print(f"读取pkl文件<{filepath}>失败", e)
 
     @staticmethod
     def writeList2Pkl(filepath: str, dataList: list):
@@ -90,7 +90,7 @@ class FileIO:
             return json.load(f)
 
     @staticmethod
-    def writeTriad2csv(filepath: str, TriadList: list, mode="w"):
+    def writeTriad2csv(filepath: str, TriadList: list, mode="a"):
         with open(filepath, mode=mode, encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(TriadList)

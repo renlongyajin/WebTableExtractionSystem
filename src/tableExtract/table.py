@@ -128,7 +128,6 @@ class Table:
                         newItem.rowLoc = row
                         newItem.absoluteRow = row
                         self.cell[row].insert(before, newItem)
-                    # before += 1
                 before += 1
         # 列扩展
         for rows in self.cell:
@@ -258,6 +257,10 @@ class Table:
         :return:
         """
         self.initialTableItemWordType()
+        for row in self.cell:
+            for col in row:
+                print(col.wordType, end=" ")
+            print()
         data = np.zeros((self.rowNumber, self.colNumber), dtype=int)
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
@@ -348,14 +351,14 @@ class Table:
             colIndex = 0
             before = 0  # 记录从这一行开始，到现在，之前有几个元素进入队列
             for j in range(len(self.cell[i])):
-                col = self.cell[i][j]
+                data = self.cell[i][j]
                 colStart = 0
                 for position in positionList:
                     colStart += position[1]
-                col.absoluteCol = colStart + j - before
-                col.absoluteRow = i
-                if col.rowspan > 1 or col.colspan > 1:
-                    positionList.append([col.rowspan, col.colspan])
+                data.absoluteCol = colStart + j - before
+                data.absoluteRow = i
+                if data.rowspan > 1 or data.colspan > 1:
+                    positionList.append([data.rowspan, data.colspan])
                     before += 1
                 colIndex += 1
 
@@ -598,7 +601,7 @@ class Table:
         addTable = doc.add_table(rows=self.rowNumber + 1, cols=self.colNumber, style="Table Grid")
         # 添加表格标题
         addTable.cell(0, 0).merge(addTable.cell(0, self.colNumber - 1))
-        addTable.cell(0, 0).text = str(self.name)
+        addTable.cell(0, 0).text = "未命名表格" if self.name is None or self.name == "None" else str(self.name)
         addTable.cell(0, 0).paragraphs[0].paragraph_format.alignment = WD_TABLE_ALIGNMENT.CENTER  # 第一行表格水平居中
         self.getAbsolutePosition()
         for rowData in self.cell:
@@ -819,10 +822,26 @@ class Table:
         relationship = []
         if self.name and self.prefix:
             personNameList = self.getPersonColList(removeHeader=True)
+            prefix = [self.prefix, self.hrefMap[self.prefix] if self.prefix in self.hrefMap else '']
             if len(personNameList) == 0:
+                propertyNameList = self.getPropertyList(isPropertyName=True)
+                CRList = FileIO.readJson(f"{gol.get_value('personTablePath')}\\captionRelationship.json")
+                count = 0
+                for propertyName in propertyNameList:
+                    for CR in CRList:
+                        if CR in propertyName:
+                            count += 1
+                            continue
+                if count > len(propertyNameList) / 2:
+                    for j in range(self.colNumber):
+                        item = self.cell[1][j]
+                        if item.href and str(item.content) in item.href:
+                            nameAndHref = [str(item.content), item.href[str(item.content)]]
+                        else:
+                            nameAndHref = [str(item.content), '']
+                        _append(relationship, prefix, propertyNameList[j], nameAndHref)
                 return relationship
             personHrefList = self.__getPersonHrefList(personNameList)
-            prefix = [self.prefix, self.hrefMap[self.prefix] if self.prefix in self.hrefMap else '']
             for i in range(len(personNameList)):
                 # 添加三元组
                 _append(relationship, prefix, self.name, personHrefList[i])
@@ -950,6 +969,12 @@ class Table:
                 if self.cell[i][j].getTableItemType() == "标点类型":
                     self.cell[i][j].content = ""
 
+    def dump(self):
+        string = ""
+        for row in self.cell:
+            string += ",".join([str(item.content) for item in row]) + "\n"
+        return string
+
 
 class TypeTree:
     """
@@ -988,14 +1013,14 @@ class TypeTree:
         rowTypeCharacterList = []
         colTypeCharacterList = []
         for i in range(table.rowNumber - 1):
-            rowTypeCharacterList.append(self.VType(table.getRowAt(i), table.getRowAt(table.rowNumber - 1)))
-        if rowTypeCharacter:
-            rowTypeCharacter = np.mean(rowTypeCharacterList)
-
-        for j in range(table.colNumber - 1):
-            colTypeCharacterList.append(self.VType(table.getColAt(j), table.getColAt(table.colNumber - 1)))
+            colTypeCharacterList.append(self.VType(table.getRowAt(i), table.getRowAt(table.rowNumber - 1)))
         if colTypeCharacterList:
             colTypeCharacter = np.mean(colTypeCharacterList)
+
+        for j in range(table.colNumber - 1):
+            rowTypeCharacterList.append(self.VType(table.getColAt(j), table.getColAt(table.colNumber - 1)))
+        if rowTypeCharacterList:
+            rowTypeCharacter = np.mean(rowTypeCharacterList)
         sumNumber = rowTypeCharacter + colTypeCharacter
         if sumNumber == 0:
             return rowTypeCharacter, colTypeCharacter
@@ -1055,54 +1080,90 @@ def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
     :return: 返回表格
     """
 
+    def changeTag2TableItem(colData: Tag, rowIndex: int, colIndex: int) -> TableItem:
+        rowspan = colspan = 1
+        # 获取表格单元中的超链接
+        href = {}
+        aList = colData.find_all("a")
+        for a in aList:
+            if a.has_attr("href"):
+                href[a.text] = r"https://baike.baidu.com" + a["href"]
+        # 获取表格单元中的图片
+        imgSrc = []
+        imgList = colData.find_all("img")
+        for img in imgList:
+            if img.has_attr("src"):
+                imgSrc.append(img["src"])
+        # 获取表格的占据行列数
+        if colData.has_attr("rowspan"):
+            rowspan = int(colData['rowspan'])
+        if colData.has_attr("colspan"):
+            colspan = int(colData['colspan'])
+        text = re.sub('(\[)\d+(\])', '', colData.text)  # 去除索引注释，例如 [12]
+        content = text.replace("\xa0", "")
+        tagName = colData.name
+        tableItem = TableItem(content, rowIndex, rowspan, colIndex, colspan, href, imgSrc, tagName=tagName)
+        return tableItem
+
+    def finalDeal(table: Table, colLenList: list, rowNumber: int):
+        table.colNumber = max(colLenList)
+        table.rowNumber = rowNumber
+        table.getAbsolutePosition()
+        table.initialNormal()  # 判断是否正常
+        table.initialCorrect()  # 判断是否正确
+        table.initialTableItemsType()  # 初始化表格单元的类型
+
     table = Table()
     table.cell = []
-    rowMaxSize = 0
     colLenList = []
     colIndex = rowIndex = 0
     table.name = str(caption)  # 命名
     table.prefix = prefix
-    for rowData in tag.children:
-        innerList = []
-        colSize = 0
-        for colData in rowData.children:
-            if isinstance(colData, NavigableString):
-                continue
-            rowspan = colspan = 1
-            # 获取表格单元中的超链接
-            href = {}
-            aList = colData.find_all("a")
-            for a in aList:
-                if a.has_attr("href"):
-                    href[a.text] = r"https://baike.baidu.com" + a["href"]
-            # 获取表格单元中的图片
-            imgSrc = []
-            imgList = colData.find_all("img")
-            for img in imgList:
-                if img.has_attr("src"):
-                    imgSrc.append(img["src"])
-            # 获取表格的占据行列数
-            if colData.has_attr("rowspan"):
-                rowspan = int(colData['rowspan'])
-            if colData.has_attr("colspan"):
-                colspan = int(colData['colspan'])
+    thead = tag.find("thead")
+    tbody = tag.find("tbody")
+    if thead and tbody:
+        rowIndex = 0
 
-            colSize += colspan
-            text = re.sub('(\[)\d+(\])', '', colData.text)  # 去除索引注释，例如 [12]
-            content = text.replace("\xa0", "")
-            tagName = colData.name
-            tableItem = TableItem(content, rowIndex, rowspan, colIndex, colspan, href, imgSrc, tagName=tagName)
-            innerList.append(tableItem)
-        colLenList.append(colSize)
-        table.cell.append(innerList)
-        rowMaxSize += 1
-    table.colNumber = max(colLenList)
-    table.rowNumber = rowMaxSize
-    table.getAbsolutePosition()
-    table.initialNormal()  # 判断是否正常
-    table.initialCorrect()  # 判断是否正确
-    table.initialTableItemsType()  # 初始化表格单元的类型
-    # table.initialTableItemWordType()  # 初始化表格单词类型
+        for row in thead.children:
+            colIndex = 0
+            colSize = 0
+            innerList = []
+            for colData in row.children:
+                tableItem = changeTag2TableItem(colData, rowIndex, colIndex)
+                colIndex += 1
+                innerList.append(tableItem)
+                colSize += tableItem.colspan
+            colLenList.append(colSize)
+            table.cell.append(innerList)
+            rowIndex += 1
+        for row in tbody.children:
+            colIndex = 0
+            colSize = 0
+            innerList = []
+            for colData in row.children:
+                tableItem = changeTag2TableItem(colData, rowIndex, colIndex)
+                colIndex += 1
+                innerList.append(tableItem)
+                colSize += tableItem.colspan
+            rowIndex += 1
+            colLenList.append(colSize)
+            table.cell.append(innerList)
+        finalDeal(table, colLenList, rowIndex)
+    else:
+        for rowData in tag.children:
+            innerList = []
+            colSize = 0
+            for colData in rowData.children:
+                if isinstance(colData, NavigableString):
+                    continue
+                tableItem = changeTag2TableItem(colData, rowIndex, colIndex)
+                colIndex += 1
+                colSize += tableItem.colspan
+                innerList.append(tableItem)
+            colLenList.append(colSize)
+            table.cell.append(innerList)
+            rowIndex += 1
+        finalDeal(table, colLenList, rowIndex)
     return table
 
 
@@ -1123,4 +1184,3 @@ def changeWordTable2Table(table: DocTable) -> Table:
         rowList.append(colList)
     newTable = Table(rowNum - 1, maxColNum, caption, rowList)
     return newTable
-

@@ -26,6 +26,12 @@ class MainWindows(QMainWindow):
     def __init__(self):
         super(MainWindows, self).__init__()
 
+        self.personName_text = QLabel(self)
+        self.personName_text.setText("人名：")
+        self.search_btn = QPushButton(self)
+        self.search_btn.setText("加入")
+
+        self.url_le = QLineEdit(self)
         self.neo4jWindows = Neo4jWindows()
 
         self.statusBar = QStatusBar()
@@ -60,6 +66,8 @@ class MainWindows(QMainWindow):
 
         self.initUI()
 
+        threading.Thread(target=self.tableExtractorThread.updateUrlList).start()
+
     # noinspection PyArgumentList
     def initUI(self):
         self.setWindowTitle('Web表格信息抽取系统')
@@ -71,8 +79,13 @@ class MainWindows(QMainWindow):
         self.listView.setModel(self.listModel)
         self.listView.clicked.connect(self.showUrlPage)
         self.listView.clicked.connect(self.showExtractedInformation)
+        self.search_btn.clicked.connect(self.btn_click_search)
         self.listLayout.addWidget(self.listView)
-
+        hAddUrlBox = QHBoxLayout()
+        hAddUrlBox.addWidget(self.personName_text)
+        hAddUrlBox.addWidget(self.url_le)
+        hAddUrlBox.addWidget(self.search_btn)
+        self.listLayout.addLayout(hAddUrlBox)
         self.browser.load(QUrl('https://www.baidu.com/'))
         self.browserLayout.addWidget(self.browser)
 
@@ -161,7 +174,7 @@ class MainWindows(QMainWindow):
         neo4j_ = QAction("neo4j", self)
         database_.addAction(sqlServer_)
         database_.addAction(neo4j_)
-        neo4j_.triggered.connect(self.neo4jWindows.show)
+        neo4j_.triggered.connect(self.startNeo4jWindows)
 
         configure_ = bar.addMenu("设置")
         CAll_ = QAction("全部设置", self)
@@ -237,14 +250,31 @@ class MainWindows(QMainWindow):
     def showUrlPage(self, item):
         url = self.urlList[item.row()]
         # self.browser.load(QUrl(url))
+        self.showWebPage(url)
+
+    def showWebPage(self, url):
         self.topMid.updatePageWithUrl(url)
 
     def showExtractedInformation(self, item):
+        url_ = self.urlList[item.row()]
+        self.showTableAndChart(url_)
+
+    def showTableAndChart(self, url_: str):
         def getDataListWithUrl(url: str):
-            url2pathDict = self.tableExtractorThread.tableExtractor.url2pathDict
-            if url in url2pathDict:
-                return FileIO.readPkl(url2pathDict[url])
-            return []
+            url2pathDict = FileIO.readPkl(f"{gol.get_value('configurationPath')}\\url2pathDict.pkl")
+            wait = 10
+            while url not in url2pathDict and wait > 0:
+                time.sleep(0.5)
+                url2pathDict = FileIO.readPkl(f"{gol.get_value('configurationPath')}\\url2pathDict.pkl")
+                wait -= 1
+            if wait <= 0:
+                dataList_ = []
+                relationChartPath = ''
+            else:
+                Id = url2pathDict[url]
+                dataList_ = FileIO.readPkl(f"{gol.get_value('tablePklPath')}\\{Id}.pkl")
+                relationChartPath = f"{gol.get_value('relationChartPath')}\\{Id}.html"
+            return dataList_, relationChartPath
 
         def addTable(tableSplitter: QSplitter, table: Table):
             tableWidget = QTableWidget()
@@ -258,29 +288,74 @@ class MainWindows(QMainWindow):
                     tableWidget.setSpan(data.absoluteRow, data.absoluteCol, data.rowspan, data.colspan)
             tableSplitter.addWidget(tableWidget)
 
-        url_ = self.urlList[item.row()]
-        dataList = getDataListWithUrl(url_)
-        tableList = dataList[0]
-        entityAndRelationshipList = dataList[1]
-        entityList = [data[0] for data in entityAndRelationshipList]
-        relationshipList = [data[1] for data in entityAndRelationshipList]
-        entityJson = json.dumps(entityList, sort_keys=True, indent=4, separators=(',', ':'), ensure_ascii=False)
-        relationshipJson = json.dumps(relationshipList, sort_keys=True, indent=4, separators=(',', ':'),
-                                      ensure_ascii=False)
-        self.entityEditor.setPlainText(entityJson)
-        self.relationshipEditor.setPlainText(relationshipJson)
-        clearLayOut(self.tableLayout)
-        _tableSplitter = QSplitter(Qt.Vertical)
-        for _table in tableList:
-            addTable(_tableSplitter, _table)
-        self.tableLayout.addWidget(_tableSplitter)
+        def addTable1(tabWidget: QTabWidget, table: Table):
+            tabWidget.setTabPosition(QTabWidget.East)
+            tabWidget.setTabShape(QTabWidget.Triangular)
+
+            tableWidget = QTableWidget()
+            tableWidget.setRowCount(table.rowNumber)
+            tableWidget.setColumnCount(table.colNumber)
+
+            for rows in table.cell:
+                for data in rows:
+                    newItem = QTableWidgetItem(str(data.content))
+                    tableWidget.setItem(data.absoluteRow, data.absoluteCol, newItem)
+                    tableWidget.setSpan(data.absoluteRow, data.absoluteCol, data.rowspan, data.colspan)
+
+            tabWidget.addTab(tableWidget, f"{table.name}")
+            # tableSplitter.addWidget(tabWidget)
+
+        dataList, htmlPath = getDataListWithUrl(url_)
+        if len(dataList) > 0:
+            tableList = dataList[0]
+            entityAndRelationshipList = dataList[1]
+            entityList = [data[0] for data in entityAndRelationshipList]
+            relationshipList = [data[1] for data in entityAndRelationshipList]
+            entityJson = json.dumps(entityList, sort_keys=True, indent=4, separators=(',', ':'), ensure_ascii=False)
+            relationshipJson = json.dumps(relationshipList, sort_keys=True, indent=4, separators=(',', ':'),
+                                          ensure_ascii=False)
+            self.entityEditor.setPlainText(entityJson)
+            self.relationshipEditor.setPlainText(relationshipJson)
+            clearLayOut(self.tableLayout)
+            _tableSplitter = QSplitter(Qt.Vertical)
+            tabWidget = QTabWidget()
+            for _table in tableList:
+                # addTable(_tableSplitter, _table)
+                addTable1(tabWidget, _table)
+            _tableSplitter.addWidget(tabWidget)
+            self.tableLayout.addWidget(_tableSplitter)
+            self.showRelationChart(htmlPath)
+        else:
+            QMessageBox.warning(self, "标题", f"未找到该人物", QMessageBox.Yes)
 
     def startNeo4jWindows(self):
-        self.neo4jWindows.show()
+        self.neo4jWindow = Neo4jWindows()
+        self.neo4jWindow.show()
 
     def configurePage(self):
         self.configureWindows = ConfigureWindows()
         self.configureWindows.show()
+
+    def showRelationChart(self, htmlPath: str):
+        self.relationChart = Neo4jWindows()
+        self.relationChart.show()
+        self.relationChart.showRelationChart(htmlPath)
+        pass
+
+    def btn_click_search(self):
+        personName = self.url_le.text().strip()
+        if personName:
+            url = "https://baike.baidu.com/item/" + personName.strip()
+            html = WebSpider.getHtml(url)
+            if html:
+                tableExtractor = TableExtract()
+                tableExtractor.nowUrl = url
+                tableExtractor.nowName = personName
+                tableList = tableExtractor.getTable(html)
+                tableExtractor.dealWithTableList(tableList)
+                self.tableExtractorThread.tableExtractor.addUrlList(url)
+                self.showWebPage(url)
+                self.showTableAndChart(url)
 
 
 class WebSpiderThread(QThread):
@@ -307,21 +382,16 @@ class TableExtractorThread(QThread):
     def __init__(self):
         super().__init__()
         self.tableExtractor = TableExtract()
-        self.updateUrlRunning = False
 
     def run(self):
-        self.updateUrlRunning = True
         self.SLockSignal.emit()
         threading.Thread(target=self.tableExtractor.start).start()
-        threading.Thread(target=self.updateUrlList).start()
         while self.tableExtractor.running:
             time.sleep(0.5)
         self.SUnLockSignal.emit()
 
     def updateUrlList(self):
         while True:
-            if not self.updateUrlRunning:
-                return
             self.SUpdateUrlList.emit(self.tableExtractor.urlList)
             time.sleep(1.0)
 

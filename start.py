@@ -19,6 +19,7 @@ def initial():
     spiderFilePath = os.path.join(fileRootPath, r'spider')  # 爬虫的文件所在路径
     tableDocPath = os.path.join(fileRootPath, r'tableDoc')  # 表格Doc路径
     tablePklPath = os.path.join(fileRootPath, r'tablePkl')  # 表格pkl路径
+    relationChartPath = os.path.join(fileRootPath, r'relationChart')  # 关系图路径
     imagesPath = os.path.join(fileRootPath, r'images')  # 图片所在路径
     TriadPath = os.path.join(fileRootPath, r'Triad')  # 三元组文件路径
     configurationPath = os.path.join(fileRootPath, r'configuration')  # 设置文件路径
@@ -36,6 +37,7 @@ def initial():
     gol.set_value('spiderFilePath', spiderFilePath)
     gol.set_value('tableDocPath', tableDocPath)
     gol.set_value('tablePklPath', tablePklPath)
+    gol.set_value('relationChartPath', relationChartPath)
     gol.set_value('imagesPath', imagesPath)
     gol.set_value('TriadPath', TriadPath)
     gol.set_value('configurationPath', configurationPath)
@@ -91,4 +93,5 @@ if __name__ == "__main__":
     # main()
     # test()
     startWindows()
-
+    # tableExtractor = TableExtract()
+    # tableExtractor.test()

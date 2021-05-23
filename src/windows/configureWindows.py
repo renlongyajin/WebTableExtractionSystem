@@ -55,7 +55,8 @@ class ConfigureWindow(QTabWidget):
         if configureDict:
             self.configurePage(tab, configureDict)
 
-    def configurePage(self, tab, configureDict: dict):
+    @staticmethod
+    def configurePage(tab, configureDict: dict):
         v_layout = QVBoxLayout()
         h_layout = QHBoxLayout()
         formLayout = QFormLayout()

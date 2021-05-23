@@ -1,15 +1,18 @@
 #!/user/bin/env python3
 # -*- coding: utf-8 -*-
+import os
+import sys
+import time
 
 from PyQt5.QtCore import QUrl, Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QHBoxLayout, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QHBoxLayout, QLabel, QApplication
 
 
 class Neo4jWindows(QWidget):
-    def __init__(self):
-        super(Neo4jWindows, self).__init__()
+    def __init__(self, parent=None):
+        super(Neo4jWindows, self).__init__(parent)
         self.resize(1000, 600)
 
         self.back_btn = QPushButton(self)
@@ -17,6 +20,7 @@ class Neo4jWindows(QWidget):
         self.refresh_btn = QPushButton(self)
         self.zoom_in_btn = QPushButton(self)
         self.zoom_out_btn = QPushButton(self)
+        self.search_btn = QPushButton(self)
         self.zoom_text = QLabel(self)
         self.url_le = QLineEdit(self)
 
@@ -42,6 +46,7 @@ class Neo4jWindows(QWidget):
         self.h_layout.addStretch(2)
 
         self.h_layout.addWidget(self.zoom_text)
+        self.h_layout.addWidget(self.search_btn)
         self.h_layout.addWidget(self.zoom_in_btn)
         self.h_layout.addWidget(self.zoom_out_btn)
 
@@ -64,6 +69,7 @@ class Neo4jWindows(QWidget):
         self.back_btn.setText("后退")
         self.forward_btn.setText("前进")
         self.refresh_btn.setText("刷新")
+        self.search_btn.setText("搜索")
         self.zoom_in_btn.setText("放大")
         self.zoom_out_btn.setText("缩小")
         self.zoom_text.setText(f"缩放比例:{self.browser.zoomFactor()}")
@@ -82,12 +88,30 @@ class Neo4jWindows(QWidget):
         if QKeyEvent.key() == Qt.Key_Return or QKeyEvent.key() == Qt.Key_Enter:
             if self.url_le.hasFocus():
                 if self.url_le.text().startswith('https://') or self.url_le.text().startswith('http://'):
-                    self.browser.load(QUrl(self.url_le.text()))
+                    # self.browser.load(QUrl(self.url_le.text()))
+                    self.updatePageWithUrl(self.url_le.text())
                 else:
-                    self.browser.load(QUrl('https://' + self.url_le.text()))
+                    # self.browser.load(QUrl('https://' + self.url_le.text()))
+                    self.updatePageWithUrl('https://' + self.url_le.text())
 
     def updatePageWithUrl(self, url: str):
-        self.browser.load(QUrl(url))
+        try:
+            self.browser.load(QUrl(url))
+        except Exception as e:
+            print(e)
+
+    def showRelationChart(self, htmlPath: str):
+        try:
+            wait = 4  # 等待2秒
+            while not os.path.exists(htmlPath) and wait > 0:
+                time.sleep(0.5)
+                wait -= 1
+            if wait <= 0:
+                return
+            else:
+                self.browser.load(QUrl.fromLocalFile(htmlPath))
+        except Exception as e:
+            print(e)
 
     def zoom_in_func(self):
         self.browser.setZoomFactor(self.browser.zoomFactor() + self.proportion)
@@ -96,3 +120,12 @@ class Neo4jWindows(QWidget):
     def zoom_out_func(self):
         self.browser.setZoomFactor(self.browser.zoomFactor() - self.proportion)
         self.zoom_text.setText(f"缩放比例:{round(self.browser.zoomFactor(), 1)}")
+
+
+if __name__ == '__main__':
+    filepath = r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\relationChart\孔子2021_19_08_3865.html"
+    app = QApplication(sys.argv)
+    win = Neo4jWindows()
+    win.show()
+    win.showRelationChart(filepath)
+    sys.exit(app.exec_())

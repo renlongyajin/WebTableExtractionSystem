@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="C:\Users\My-Pc\Desktop\table\2维表格.html">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\IO\databaseInteraction\MSSQL.py">
           <value>
             <Attribute>
@@ -25,6 +32,27 @@
           </value>
         </entry>
         <entry key="\file\log\error.log">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\file\tableExample\等长等类型表格.html">
+          <value>
+            <Attribute>
+              <option name="separator" value=";" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\file\tableExample\行列均需扩展的表格.html">
+          <value>
+            <Attribute>
+              <option name="separator" value=";" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\file\tableExample\行列扩展后的表格.html">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -59,7 +87,28 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\src\tableExtract\TableItem.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\src\tableExtract\TypeTree.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\src\tableExtract\table.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\src\tableExtract\tableExtractor.py">
           <value>
             <Attribute>
               <option name="separator" value=":" />
@@ -77,6 +126,13 @@
           <value>
             <Attribute>
               <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\src\windows\Neo4jWindows.py">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
             </Attribute>
           </value>
         </entry>
@@ -192,7 +248,21 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\test\graph_with_edge_options.html">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\test\logTest.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\test\pyechart.py">
           <value>
             <Attribute>
               <option name="separator" value="," />
@@ -207,6 +277,13 @@
           </value>
         </entry>
         <entry key="\test\usingPyneo.py">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\test\各种窗口.py">
           <value>
             <Attribute>
               <option name="separator" value="," />
