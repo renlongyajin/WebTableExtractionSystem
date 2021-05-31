@@ -2,7 +2,6 @@ import json
 import os
 import re
 from copy import deepcopy
-from typing import Tuple
 
 import numpy as np
 from bs4 import NavigableString
@@ -22,8 +21,8 @@ from src.tools.algorithm.exceptionCatch import except_output
 def _clearNameOrRel(string: str) -> str:
     """
     清理姓名和关系名,删除符号和括号
-    :param string:
-    :return:
+    :param string:待处理字符串
+    :return:处理完毕的字符串
     """
     if len(string) == 0 or string.isspace():
         return ''
@@ -40,7 +39,7 @@ def _append(aList: list, a: list, b: str, c: list):
     :param a:[人名：url]
     :param b:关系
     :param c:[人名:url]
-    :return:
+    :return:无
     """
     a[0] = _clearNameOrRel(a[0])
     b = _clearNameOrRel(b)
@@ -61,7 +60,7 @@ def _notNullAppend(aList: list, a: str, b: str, c: str, isName=False):
     :param b:关系str
     :param c:客体str
     :param isName:第三个属性是否为人名
-    :return:
+    :return:无
     """
     if len(a) == 0 or a.isspace() or len(b) == 0 or b.isspace() or len(c) == 0 or c.isspace():
         return
@@ -87,6 +86,14 @@ class Table:
 
     def __init__(self, rowNumber: int = 0, colNumber: int = 0, name: str = "未命名表格",
                  table=None, unfoldDirection=None):
+        """
+        初始化函数
+        :param rowNumber: 表格的行数
+        :param colNumber: 表格的列数
+        :param name: 表格的名称
+        :param table: 表格的单元格数组，这是一个二维数组
+        :param unfoldDirection: 表格的展开方向
+        """
         self.rowNumber = rowNumber  # 表格的行数
         self.colNumber = colNumber  # 表格的列数
         if table is None:  # 表格所在的二维数组
@@ -178,7 +185,7 @@ class Table:
         """
         删除指定列
         :param index: 要删除的索引号，例如Index=0代表第1列
-        :return:
+        :return:无
         """
         if self.__isCorrect and self.__isNormal:
             if index < 0 or index >= self.colNumber:
@@ -194,7 +201,7 @@ class Table:
     def flip(self):
         """
         翻转表格方向,并返回一个新的矩阵
-        :return:
+        :return:返回翻转方向后的矩阵
         """
         newTable = Table(rowNumber=self.colNumber, colNumber=self.rowNumber, name=self.name)
         for i in range(self.rowNumber):
@@ -219,7 +226,7 @@ class Table:
     def changeToStr(self):
         """
         将表格内的数据形式全部转化为字符串
-        :return:
+        :return:转化后的表格
         """
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
@@ -235,7 +242,6 @@ class Table:
         for i in range(self.rowNumber):
             for j in range(self.colNumber):
                 data[i, j] = len(str(self.cell[i][j].content))
-
         colVarianceMean = np.mean(np.std(data, axis=0))  # 列方差均值
         rowVarianceMean = np.mean(np.std(data, axis=1))  # 行方差均值
         sumNumber = rowVarianceMean + colVarianceMean
@@ -311,6 +317,8 @@ class Table:
         """
         if self.unfoldDirection:
             return self.unfoldDirection
+
+        # 标签识别
         rowRes = [item.tagName == 'th' for item in self.getRowAt(0)]
         if rowRes[0] and len(set(rowRes)) == 1:
             self.unfoldDirection = "ROW"
@@ -320,6 +328,13 @@ class Table:
             self.unfoldDirection = "COL"
             return self.unfoldDirection
 
+        # 经验规则
+        if self.rowNumber >= 3 and self.colNumber >= self.rowNumber * 3:
+            self.unfoldDirection = 'ROW'
+        if self.colNumber >= 3 and self.rowNumber >= self.colNumber * 3:
+            self.unfoldDirection = 'COL'
+
+        # 长度和类型判断法
         rowVarianceMean, colVarianceMean = self.getTableItemLengthCharacter()
         rowTypeCharacter, colTypeCharacter = self.getTableItemTypeCharacter()
         W1 = 0.5
@@ -329,6 +344,7 @@ class Table:
         if Row < Col:
             direction = "ROW"
         elif Row == Col:
+            # 词性和判断法
             rowWordTypeVarianceMean, colWordTypeVarianceMean = self.getTableItemWordTypeCharacter()
             if rowWordTypeVarianceMean < colWordTypeVarianceMean:
                 direction = "ROW"
@@ -344,7 +360,7 @@ class Table:
     def getAbsolutePosition(self):
         """
         获得表格中每个项目所在的绝对位置，其中行绝对位置为self.absoluteRow,列绝对位置为self.absoluteCol
-        :return:
+        :return:无
         """
         positionList = []
         for i in range(len(self.cell)):
@@ -368,10 +384,11 @@ class Table:
                 else:
                     positionList.pop(x)
 
-    def getPropertyList(self, isPropertyName=False):
+    def getPropertyList(self, isPropertyName=False) -> list:
         """
-        获取属性列
-        :return:
+        获取属性所在的列表
+        :isPropertyName:是否只返回属性名
+        :return:属性单元格列表
         """
         if not isPropertyName:
             if self.propertyList:
@@ -386,10 +403,10 @@ class Table:
             self.propertyNameList = [str(item.content) for item in self.propertyList]
             return self.propertyNameList
 
-    def getHrefMap(self):
+    def getHrefMap(self) -> dict:
         """
-        初始化href映射表
-        :return:
+        获取整张表格的href映射表
+        :return:整张表格的href映射表
         """
         if len(self.hrefMap) == 0:
             for row in self.cell:
@@ -403,7 +420,7 @@ class Table:
     def getTableType(self):
         """
         识别表格类型
-        :return:
+        :return:表格的类型
         """
         if self.tableType:
             return self.tableType
@@ -417,7 +434,7 @@ class Table:
             elif self.__isEntityRelationshipTable():
                 self.tableType = "实体关系表"
             else:
-                self.tableType = "其他"
+                self.tableType = "其他表"
         return self.tableType
 
     def getPersonColList(self, deleteCol=False, removeHeader=False, getName=False) -> list:
@@ -460,6 +477,11 @@ class Table:
         return personList
 
     def __tagDiscriminatePropertyLineNum(self, direction: str):
+        """
+        根据标签判断表格的属性行数，该方法执行前必须先判断表格的展开方向
+        :param direction: 表格的展开方向
+        :return:
+        """
         res = 0
         if direction == "ROW":
             for i in range(self.rowNumber):
@@ -511,6 +533,11 @@ class Table:
         return res
 
     def discriminatePropertyLineNum(self, direction: str):
+        """
+        判断表格的属性行数，该方法执行前必须先判断表格的展开方向
+        :param direction: 表格的展开方向
+        :return:
+        """
         if self.propertyLineNum:
             return self.propertyLineNum
         res = self.__tagDiscriminatePropertyLineNum(direction)
@@ -524,7 +551,7 @@ class Table:
     def initialTableItemsType(self):
         """
         初始化表格每一个单元的类型，如“你好”就是中文，“123”就是数字>1，“hello”就是英文
-        :return:
+        :return:无
         """
         for row in self.cell:
             for item in row:
@@ -533,7 +560,7 @@ class Table:
     def initialTableItemWordType(self):
         """
         获得单词类型，例如"水果"就是名词，“跑步”就是动词，如果是句子就会划分为多个词
-        :return:
+        :return:无
         """
         for row in self.cell:
             for item in row:
@@ -542,7 +569,7 @@ class Table:
     def initialCorrect(self) -> bool:
         """
         判断表格是否正确，正确表格的行与列单位数都非常规整
-        :return:
+        :return:表格正确则返回True，表格错误则返回False
         """
         colLenList = []
         for rows in self.cell:
@@ -553,10 +580,10 @@ class Table:
         self.__isCorrect = (len(set(colLenList)) == 1)
         return self.__isCorrect
 
-    def initialNormal(self):
+    def initialNormal(self) -> bool:
         """
         判断是否是一个正常的表格，正常表格必须行列数都大于2
-        :return:
+        :return:正常表格则返回True，否则返回False
         """
         if self.rowNumber >= 2 and self.colNumber >= 2:
             self.__isNormal = True
@@ -565,6 +592,10 @@ class Table:
         return self.__isNormal
 
     def initialPropertyList(self):
+        """
+        初始化表格的属性列表
+        :return: 无
+        """
         direction = self.getUnfoldDirection()
         propertyLineNum = self.discriminatePropertyLineNum(direction)
         if direction == "ROW":
@@ -578,9 +609,8 @@ class Table:
     def writeTable2Doc(self, filepath: str):
         """
         将表格写入到指定路径的doc文档中
-        :param table: 导入的表格
         :param filepath: 指定的文件路径
-        :return:
+        :return:无
         """
         if os.path.exists(filepath):
             doc = Document(filepath)
@@ -629,7 +659,7 @@ class Table:
     def __table2DictList(self, filtration=False, deletePersonName=False) -> list:
         """
         表格转化为字典列表,默认为横向展开
-        :return:
+        :return:无
         """
         if self.__isNormal and self.__isCorrect:
             if deletePersonName:
@@ -657,14 +687,14 @@ class Table:
     def table2Json(self) -> str:
         """
         表格转化为json串
-        :return:
+        :return:转化后的json串
         """
         return json.dumps(self.__table2DictList(), ensure_ascii=False)
 
-    def __isPersonInfoTable(self):
+    def __isPersonInfoTable(self)->bool:
         """
         识别当前表格是否为人物信息表格
-        :return:
+        :return:是则返回True，不是则返回False
         """
         if self.getUnfoldDirection() == "ROW":
             if self.rowNumber != 2:
@@ -695,21 +725,33 @@ class Table:
     def __isPropertyRelationShipTable(self) -> bool:
         """
         判断是否为属性关系表
-        :return:
+        :return:是则返回True，不是则返回False
         """
+        # 有列为关系
         personTablePath = gol.get_value('personTablePath')
         propertyRelationShipList = FileIO.readJson(f"{personTablePath}\\propertyRelationship.json")
-        propertyRelationshipSet = set(propertyRelationShipList)
         propertyList = self.getPropertyList(isPropertyName=True)
         for propertyName in propertyList:
-            if propertyName in propertyRelationshipSet:
-                return True
+            for relationshipName in propertyRelationShipList:
+                if relationshipName in propertyName:
+                    return True
+        # 属性行为关系
+        propertyNameList = self.getPropertyList(isPropertyName=True)
+        CRList = FileIO.readJson(f"{gol.get_value('personTablePath')}\\captionRelationship.json")
+        count = 0
+        for propertyName in propertyNameList:
+            for CR in CRList:
+                if CR in propertyName:
+                    count += 1
+                    continue
+        if count > len(propertyNameList) / 2:
+            return True
         return False
 
     def __isTitleRelationShipTable(self) -> bool:
         """
         判断是否为标题关系表
-        :return:
+        :return:是则返回True，否则返回False
         """
         if self.name:
             personTablePath = gol.get_value('personTablePath')
@@ -717,15 +759,15 @@ class Table:
             for relationship in relationshipList:
                 if relationship in self.name:
                     return True
-            reg = re.compile(r".*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]+.*")
-            if re.match(reg, str(self.name)):
-                return True
+            # reg = re.compile(r".*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341]+.*")
+            # if re.match(reg, str(self.name)):
+            #     return True
         return False
 
     def __isEntityRelationshipTable(self) -> bool:
         """
         判断是否为实体关系表
-        :return:
+        :return:是则返回True，否则返回False
         """
         personTablePath = gol.get_value('personTablePath')
         relationshipList = FileIO.readJson(f"{personTablePath}\\personName.json")
@@ -739,7 +781,7 @@ class Table:
     def __getPropertyRelationshipList(self):
         """
         获取属性关系列表，并且把与人物有关的属性由高到低排序
-        :return:
+        :return:属性关系列表
         """
         personTablePath = gol.get_value('personTablePath')
         propertyRelationshipList = FileIO.readJson(f"{personTablePath}\\propertyRelationship.json")
@@ -749,13 +791,14 @@ class Table:
             indexAndNameList.extend(
                 [(index, relationshipName) for index, relationshipName
                  in list(enumerate(propertyRelationshipList))
-                 if propertyName == relationshipName])
+                 if relationshipName in propertyName])
         sortIndexList = sorted(indexAndNameList, key=lambda indexAndNum: indexAndNum[0])  # 根据序号排序
         sortIndexList = [indexAndName[1] for indexAndName in sortIndexList]
         return sortIndexList
 
     def fusionJsonWord(self, jsonFilePath):
         """
+        该函数暂时未用到。
         融合个人属性到“个人信息表”列表之中,使得下一次的判断更加精确
         :return:
         """
@@ -769,7 +812,7 @@ class Table:
     def extractEntityRelationship(self, getEntityTriad=False):
         """
         抽取实体关系
-        :return:
+        :return:从当前表格中抽取的实体列表和关系列表
         """
         entity = []
         relationship = []
@@ -788,6 +831,16 @@ class Table:
         return entity, relationship
 
     def extractPropertyRelationship(self):
+        """
+        从当前表格中抽取属性关系
+        :return: 属性关系列表
+        """
+        def listFindPosition(AList: list, waitFind: str):
+            for i in range(len(AList)):
+                if waitFind in AList[i]:
+                    return i
+            return -1
+
         relationship = []
         if not self.prefix:
             return relationship
@@ -799,11 +852,11 @@ class Table:
             return relationship
         if len(propertyRelationshipList) >= 1:  # 如果存在多个属性关系，则删除其余低级的属性关系
             for i in range(1, len(propertyRelationshipList)):
-                self.deleteOneCol(propertyNameList.index(propertyRelationshipList[i]))
+                self.deleteOneCol(listFindPosition(propertyNameList, propertyRelationshipList[i]))
             propertyNameList = self.getPropertyList(isPropertyName=True)  # 删除属性列之后更新一下属性列表
         personNameList = self.getPersonColList()
         personHrefList = self.__getPersonHrefList(personNameList)
-        index = propertyNameList.index(propertyRelationshipList[0])
+        index = listFindPosition(propertyNameList, propertyRelationshipList[0])
         relationshipList = [str(relationship.content) for relationship in self.getColAt(index)]  # 获得关系名列表
         self.deleteOneCol(index)  # 删除关系名列表
         propertyLineNum = self.discriminatePropertyLineNum(self.getUnfoldDirection())
@@ -816,8 +869,8 @@ class Table:
 
     def extractCaptionRelationship(self):
         """
-        将标题关系转化为三元组
-        :return:
+        从表格中抽取标题关系
+        :return:标题关系列表
         """
         relationship = []
         if self.name and self.prefix:
@@ -847,10 +900,34 @@ class Table:
                 _append(relationship, prefix, self.name, personHrefList[i])
         return relationship
 
+    def __extractPropertyRelationship(self):
+        """
+        抽取属性行为关系的表格
+        :return:
+        """
+        relationship = []
+        propertyNameList = self.getPropertyList(isPropertyName=True)
+        CRList = FileIO.readJson(f"{gol.get_value('personTablePath')}\\captionRelationship.json")
+        count = 0
+        for propertyName in propertyNameList:
+            for CR in CRList:
+                if CR in propertyName:
+                    count += 1
+                    continue
+        if count > len(propertyNameList) / 2:
+            for j in range(self.colNumber):
+                item = self.cell[1][j]
+                if item.href and str(item.content) in item.href:
+                    nameAndHref = [str(item.content), item.href[str(item.content)]]
+                else:
+                    nameAndHref = [str(item.content), '']
+                _append(relationship, self.prefix, propertyNameList[j], nameAndHref)
+        return relationship
+
     def extractEntity(self, getEntityTriad=False):
         """
-        将实体表转化为与人物有关的实体
-        :return:
+        从表格中抽取实体
+        :return:实体列表
         """
         entity = []
         if getEntityTriad:
@@ -865,8 +942,8 @@ class Table:
                         # 添加三元组
                         _notNullAppend(entity, personNameList[i], propertyNameList[j], content)
         else:
-            if self.colNumber == 1:  # 仅剩一个属性了，必然不存在实体
-                return entity
+            # if self.colNumber == 1:  # 仅剩一个属性了，必然不存在实体
+            #     return entity
             personNameList = self.getPersonColList(getName=True, removeHeader=True)
             if len(personNameList) == 0:
                 return entity
@@ -885,8 +962,8 @@ class Table:
     def __getPersonHrefList(self, personList: list):
         """
         返回人的href链接
-        :param personList:
-        :return:
+        :param personList:代表人物的单元格列表
+        :return:人物的href链接链表，每个元素都是一个超链接字典
         """
 
         personHrefList = []
@@ -904,10 +981,16 @@ class Table:
     def __getPersonNameIndex(self):
         """
         返回人名所在的列的索引
-        :return:
+        :return:人名所在的列的索引
         """
 
         def _getListIndex(name: str, stringList: list):
+            """
+            从指定列表中获取包含某个字符串的索引号
+            :param name: 指定字符串
+            :param stringList: 指定列表
+            :return: 索引号，若无，则返回-1
+            """
             __index = 0
             for string in stringList:
                 if string in name:
@@ -932,7 +1015,7 @@ class Table:
     def clearTable(self):
         """
         清理表格，去除表格中无意义的序号，去除空行或者空列
-        :return:
+        :return:无
         """
         propertyList = self.getPropertyList(isPropertyName=True)
         # 清除带有“序”的属性行
@@ -982,6 +1065,9 @@ class TypeTree:
     """
 
     def __init__(self):
+        """
+        初始化类型树
+        """
         tree = Tree()
         tree.create_node(tag="类型", identifier="类型")
         tree.create_node(tag="超链接", identifier="超链接", parent="类型")
@@ -1002,12 +1088,25 @@ class TypeTree:
         # tree.show()
         self.tree = tree
 
-    def getTypeCharacter(self, table: Table) -> Tuple[float, float]:
+    def getTypeCharacter(self, table: Table):
         """
         计算表格的行类型特征和列类型特征
         :param table:传入的表格
         :return:行类型特征rowTypeCharacter和列类型特征colTypeCharacter
         """
+
+        # data1 = np.zeros((table.rowNumber, table.colNumber - 1), dtype=int)
+        # for i in range(table.rowNumber):
+        #     for j in range(table.colNumber - 1):
+        #         data1[i][j] = self._VType(table.cell[i][j], table.cell[i][table.colNumber - 1])
+        #
+        # data2 = np.zeros((table.rowNumber - 1, table.colNumber), dtype=int)
+        # for i in range(table.rowNumber - 1):
+        #     for j in range(table.colNumber):
+        #         data2[i][j] = self._VType(table.cell[i][j], table.cell[table.rowNumber - 1][j])
+        # colTypeCharacter = np.mean(data1, axis=0)  # 列方差均值
+        # rowTypeCharacter = np.mean(data2, axis=1)  # 行方差均值
+
         rowTypeCharacter = 0
         colTypeCharacter = 0
         rowTypeCharacterList = []
@@ -1060,6 +1159,12 @@ class TypeTree:
         return distance
 
     def VType(self, v1: list, v2: list) -> float:
+        """
+        计算两个列表之间的类型差异
+        :param v1:列表1
+        :param v2:列表2
+        :return:类型差异值
+        """
         res = 0
         len1 = len(v1)
         len2 = len(v2)
@@ -1080,32 +1185,46 @@ def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
     :return: 返回表格
     """
 
-    def changeTag2TableItem(colData: Tag, rowIndex: int, colIndex: int) -> TableItem:
+    def changeTag2TableItem(tag: Tag, rowIndex: int, colIndex: int) -> TableItem:
+        """
+        把标签转化为单元格
+        :param tag: 带转化标签
+        :param rowIndex: 单元格的行索引
+        :param colIndex: 单元格的列索引
+        :return: 单元格
+        """
         rowspan = colspan = 1
         # 获取表格单元中的超链接
         href = {}
-        aList = colData.find_all("a")
+        aList = tag.find_all("a")
         for a in aList:
             if a.has_attr("href"):
                 href[a.text] = r"https://baike.baidu.com" + a["href"]
         # 获取表格单元中的图片
         imgSrc = []
-        imgList = colData.find_all("img")
+        imgList = tag.find_all("img")
         for img in imgList:
             if img.has_attr("src"):
                 imgSrc.append(img["src"])
         # 获取表格的占据行列数
-        if colData.has_attr("rowspan"):
-            rowspan = int(colData['rowspan'])
-        if colData.has_attr("colspan"):
-            colspan = int(colData['colspan'])
-        text = re.sub('(\[)\d+(\])', '', colData.text)  # 去除索引注释，例如 [12]
+        if tag.has_attr("rowspan"):
+            rowspan = int(tag['rowspan'])
+        if tag.has_attr("colspan"):
+            colspan = int(tag['colspan'])
+        text = re.sub('(\[)\d+(\])', '', tag.text)  # 去除索引注释，例如 [12]
         content = text.replace("\xa0", "")
-        tagName = colData.name
+        tagName = tag.name
         tableItem = TableItem(content, rowIndex, rowspan, colIndex, colspan, href, imgSrc, tagName=tagName)
         return tableItem
 
     def finalDeal(table: Table, colLenList: list, rowNumber: int):
+        """
+        最终处理，该步骤将表格重新初始化，并且重新计算绝对位置，判断表格类型
+        :param table: 表格名
+        :param colLenList: 列长度列表
+        :param rowNumber: 行数
+        :return:
+        """
         table.colNumber = max(colLenList)
         table.rowNumber = rowNumber
         table.getAbsolutePosition()
@@ -1123,7 +1242,6 @@ def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
     tbody = tag.find("tbody")
     if thead and tbody:
         rowIndex = 0
-
         for row in thead.children:
             colIndex = 0
             colSize = 0
@@ -1148,11 +1266,11 @@ def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
             rowIndex += 1
             colLenList.append(colSize)
             table.cell.append(innerList)
-        finalDeal(table, colLenList, rowIndex)
     else:
         for rowData in tag.children:
             innerList = []
             colSize = 0
+            colIndex = 0
             for colData in rowData.children:
                 if isinstance(colData, NavigableString):
                     continue
@@ -1163,11 +1281,17 @@ def changeTig2Table(tag: Tag, caption='未命名表格', prefix=None) -> Table:
             colLenList.append(colSize)
             table.cell.append(innerList)
             rowIndex += 1
-        finalDeal(table, colLenList, rowIndex)
+    finalDeal(table, colLenList, rowIndex)
+    # print(table.extendTable().dump())
     return table
 
 
 def changeWordTable2Table(table: DocTable) -> Table:
+    """
+    将word表格转化为Table表格
+    :param table: word中的表格
+    :return: 自定义的Table表
+    """
     caption = str(table.rows[0].cells[0].text)
     maxColNum = 0
     rowList = []

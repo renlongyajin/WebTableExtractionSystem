@@ -5,7 +5,6 @@ import threading
 
 import src.app.gol as gol
 from src.knowledgeStorage.peronGraph import PersonGraph
-from src.spider.Bayes import Bayes
 from src.spider.WebSpider import WebSpider
 from src.tableExtract.tableExtractor import TableExtract
 from src.windows.MainWindows import startWindows
@@ -62,36 +61,19 @@ def deleteAll():
 
 
 def main():
+    """
+    不显示窗口，运行系统
+    :return:
+    """
     spider = WebSpider()
     tableExtractor = TableExtract()
     personGraph = PersonGraph()
-    # tableExtractor.test()
     spider.start(threadsNum=2, maxCount=float('inf'))  # 爬虫执行无数次
     threading.Thread(target=spider.dealWithUselessUrl).start()
     threading.Thread(target=tableExtractor.start).start()
     threading.Thread(target=personGraph.start).start()
 
 
-def test():
-    tableExtractor = TableExtract()
-    tableExtractor.test()
-    # filenameList = [
-    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\新家谱登记表.docx",
-    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\zhailingwushi.docx",
-    #     # r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\旧版马吴登记表.docx",
-    #     r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableDoc\example.docx"
-    # ]
-    # for filename in filenameList:
-    #     tableList = extractWordTable(filename)
-    #     for table in tableList:
-    #         table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\myTest.docx")
-
-
 if __name__ == "__main__":
     initial()
-    # deleteAll()
-    # main()
-    # test()
     startWindows()
-    # tableExtractor = TableExtract()
-    # tableExtractor.test()

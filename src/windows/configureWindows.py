@@ -10,7 +10,14 @@ from src.app import gol
 
 
 class ConfigureWindows(QWidget):
+    """
+    配置窗口
+    """
     def __init__(self, parent=None):
+        """
+        初始化函数
+        :param parent:指定的父窗口
+        """
         super(ConfigureWindows, self).__init__(parent)
         self.setWindowTitle("设置")
         layout = QVBoxLayout()

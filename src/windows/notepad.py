@@ -190,7 +190,7 @@ class Notepad(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    app.setApplicationName("No2Pads")
+    app.setApplicationName("编辑页面")
 
     window = Notepad()
     app.exec_()

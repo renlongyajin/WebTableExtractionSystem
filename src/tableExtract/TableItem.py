@@ -15,6 +15,18 @@ class TableItem:
 
     def __init__(self, content, rowLoc, rowspan, colLoc, colspan,
                  href=None, imgSrc=None, type_=None, tagName=None):
+        """
+        初始化函数，得到一个单元格
+        :param content: 单元格的内容
+        :param rowLoc: 所在行位置
+        :param rowspan: 行跨度
+        :param colLoc: 所在列位置
+        :param colspan: 列跨度
+        :param href: 超链接字典
+        :param imgSrc: 图像的Src
+        :param type_: 表格类型
+        :param tagName: 标签名
+        """
         if href is None:
             href = {}
         if imgSrc is None:
@@ -84,6 +96,10 @@ class TableItem:
         return self.type_
 
     def getTableItemWordType(self):
+        """
+        获得单元格的单词类型
+        :return: 单元格的单词类型
+        """
         otherConfigurationPath = gol.get_value("otherConfigurationPath")
         if self.wordType:
             return self.wordType

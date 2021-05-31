@@ -25,6 +25,9 @@ from src.tools.algorithm.exceptionCatch import except_output
 
 class TableExtract:
     def __init__(self):
+        """
+        初始化函数
+        """
         self.segment = HanLP.newSegment()
         # 名词属性列表
         self.attrTypeSet = frozenset(
@@ -52,6 +55,10 @@ class TableExtract:
         self.staticInnerList = []
 
     def addInitialUrl2Queue(self):
+        """
+        初始化url队列，将部分url链接
+        :return:
+        """
         urlList = [
             r"https://baike.baidu.com/item/%E5%AD%94%E5%AD%90/1584",
             r"https://baike.baidu.com/item/%E7%9E%BF%E9%A2%96", ]
@@ -70,61 +77,12 @@ class TableExtract:
             self.pendingQueue.put([url, html])
         FileIO.writePkl(DictPath, urlHtmlDict)
 
-    def test(self):
-        _tableDocPath = gol.get_value("tableDocPath")
-        _jsonPath = gol.get_value("jsonPath")
-        entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
-        # filepath = r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableExample\等长等类型表格.html"
-        # filepath2 = r"E:\Programe\Code\python\pythonProject\WebTableExtractionSystem\file\tableExample\跨单元表格__扩展后.docx"
-        # html = FileIO.readHtmlFormFile(filepath)
-        # _tableList = self.getTable(html)
-        # for table in _tableList:
-        #     # table.writeTable2Doc(filepath2)
-        #     table = table.extendTable()
-        #     table.getPropertyList()
-        # print(table.getUnfoldDirection())
-        # table.writeTable2Doc(filepath2)
-        # 这是一个测试
-        tempUrl = [
-            r"https://baike.baidu.com/item/%E7%9E%BF%E9%A2%96",  # 瞿颖
-            # r"https://baike.baidu.com/item/%E5%AD%94%E5%AD%90/1584",  # 孔子
-        ]
-        for url in tempUrl:
-            html = WebSpider.getHtml(url)
-            last = unquote(url.split('/')[-1])
-            self.nowName = unquote(url.split('/')[-2]) if last.isdigit() else last
-            self.nowUrl = url
-            _tableList = self.getTable(html)
-            for table in _tableList:
-                print(table.dump())
-                table.hrefMap[self.nowName] = self.nowUrl
-                table = table.extendTable()
-                table.prefix = self.nowName
-                if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
-                    table = table.flip()
-                # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
-                table.clearTable()
-                entity, relationship = table.extractEntityRelationship()
-                if entity is not None and len(entity) != 0:
-                    print(entity)
-                if relationship is not None and len(relationship) != 0:
-                    print(relationship)
-                if len(entity) != 0 or len(relationship) != 0:
-                    entityJson = json.dumps(entity, ensure_ascii=False)
-                    relationshipJson = json.dumps(relationship, ensure_ascii=False)
-                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\entity.csv", entity, mode='a+')
-                    # FileIO.writeTriad2csv(f"{gol.get_value('TriadPath')}\\relationship.csv", relationship, mode='a+')
-                    # FileIO.write2Json(entity, f"{gol.get_value('jsonPath')}\\entity.json", mode='a+')
-                    # FileIO.write2Json(relationship, f"{gol.get_value('jsonPath')}\\relationship.json", mode='a+')
-                    self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
-
     @except_output()
     def start(self, maxWaitTimes=float('inf')):
         self.running = True
         print("开始抽取表格...")
         _tableDocPath = gol.get_value("tableDocPath")
         _jsonPath = gol.get_value("jsonPath")
-        entityAndRelationshipPath = gol.get_value("entityAndRelationshipPath")
         waitTimes = maxWaitTimes  # maxWaitTime次的等待,如果结束了，数据库中都没有数据，那么终止该程序
         while waitTimes:
             if not self.running:
@@ -141,78 +99,68 @@ class TableExtract:
                 self.nowName = unquote(url.split('/')[-2]) if last.isdigit() else last
                 self.nowUrl = url
 
-                _tableList = self.getTable(html)
-
-                self.dealWithTableList(_tableList)
-                self.addQueue(self.pendingQueue, 'personUrlAndHtml')
+                _tableList = self.getTable(html)  # 获取表格
+                self.dealWithTableList(_tableList)  # 处理表格的list
+                self.addQueue(self.pendingQueue, 'personUrlAndHtml')  # 补充队列
 
             time.sleep(0.2)
             waitTimes -= 1
 
     def dealWithTableList(self, _tableList: list):
-        entityNum = 0
-        relationshipNum = 0
-
+        """
+        处理Table对象的list，将这些表格中的实体和关系抽取出来，之后写下记录文件，便于之后的动态可视化处理
+        将“表格、实体、关系、关系图”全都写入到本地文件中
+        :param _tableList: Table的列表，该列表中每个元素都是一个Table对象
+        :return:
+        """
         entityListAndRelationshipList = []
+        # 将当前表格深度复制一份，便于之后的删除行列的操作
         _extendTableList = deepcopy(_tableList)
         for table in _extendTableList:
-            table.hrefMap[self.nowName] = self.nowUrl
-            table = table.extendTable()
-            table.prefix = self.nowName
-            if table.isNormal() and table.isCorrect():
+            table.hrefMap[self.nowName] = self.nowUrl  # 超链接映射
+            table = table.extendTable()  # 表格规整
+            table.prefix = self.nowName  # 设置表格的前驱
+            if table.isNormal() and table.isCorrect():  # 判断表格是否正常且正确
                 if table.getUnfoldDirection() == "COL":  # 把表格全部变成横向展开的
                     table = table.flip()
-                # table.writeTable2Doc(f"{gol.get_value('tableDocPath')}\\{self.nowName}__规整后.docx")
-                table.clearTable()
-                entity, relationship = table.extractEntityRelationship()
+                table.clearTable()  # 清理表格数据
+                entity, relationship = table.extractEntityRelationship()  # 抽取实体和关系
+                # 若存在实体和关系，则将其写入到数据库之中
                 if len(entity) != 0 or len(relationship) != 0:
                     entityJson = json.dumps(entity, ensure_ascii=False)
                     relationshipJson = json.dumps(relationship, ensure_ascii=False)
                     entityListAndRelationshipList.append([entity, relationship])
                     self.sql.writeER2DB('entityAndRelationship', entityJson, relationshipJson)
-
-                if len(entity) > 0:
-                    entityNum += 1
-                if len(relationship) > 0:
-                    relationshipNum += 1
-
-        self.tableList = _tableList
-        self.staticInnerList.extend([entityNum, relationshipNum])
-        if len(self.tagTable) >= 2:
-            FileIO.writeTriad2csv(f"{gol.get_value('tableDocPath')}\\url.csv",
-                                  [self.staticInnerList])
-        if len(self.tableList) >= 2:
-            FileIO.writeTriad2csv(f"{gol.get_value('tableDocPath')}\\other_url.csv",
-                                  [self.staticInnerList])
-
+        # 将数据记录到本地文件，方便可视化处理
         self.writeRecords(self.nowUrl, _tableList, entityListAndRelationshipList)
 
     def stop(self):
+        """
+        停止表格抽取程序
+        :return:
+        """
         self.running = False
 
     def getTable(self, _html: str) -> list:
         """
-        表格定位
-        :param _html:
-        :return:
+        表格定位，从html中抽取表格，并返回一个list，该list中每个元素都是一个Table对象
+        :param _html:待抽取的html串
+        :return:一个list，该list中每个元素都是一个Table对象
         """
         # 预处理
-        _html, _soup = htmlPreTreat(_html)
-        _tableList = self.extractNonstandardTable(_soup)
-        tagTable = _soup.find_all(name="table")
+        _html, _soup = htmlPreTreat(_html)  # html预处理
+        _tableList = self.extractNonstandardTable(_soup)  # 抽取非规范表，也就是百度百科中的“基本信息”(basic info)列表
+        tagTable = _soup.find_all(name="table")  # 找到所有的Table标签
 
         for tag in tagTable:
+            # 首先判断是否为非规范表，这种非规范表带有<table>标签，内部却是ul标签，需要当初考虑和处理
             tableList = self.extractListTable(tag)
             if len(tableList) > 0:
                 _tableList.extend(tableList)
-            elif self.throughHeuristicRule(tag):
-                caption = getCaption(tag)
-                aTable = changeTig2Table(tag, caption)
+            elif self.throughHeuristicRule(tag):  # 看是否能通过启发式规则
+                caption = getCaption(tag)  # 获取表格的标题
+                aTable = changeTig2Table(tag, caption)  # 将标签转化为Table对象
                 _tableList.append(aTable)
-
-        self.tagTable = tagTable
-        self.staticInnerList = []
-        self.staticInnerList.extend([self.nowName, self.nowUrl, str(len(_tableList)), str(len(tagTable) + 1)])
         return _tableList
 
     @except_output("启发式规则判别出错")
@@ -320,6 +268,12 @@ class TableExtract:
         return tableList
 
     def extractListTableWithRule1(self, tag: Tag, ruleDict: dict) -> list:
+        """
+        按照规则1，从Tag抽取非规范表格
+        :param tag:带抽取Tag
+        :param ruleDict: 规则映射字典
+        :return: 抽取的表格的list
+        """
         _tableList = []
         if "class" in ruleDict:
             class_name = ruleDict["class"]
@@ -367,6 +321,11 @@ class TableExtract:
         return _tableList
 
     def extractListTableWithRule2(self, _tag: Tag) -> list:
+        """
+        按照规则2，从Tag中抽取列表
+        :param _tag: 带抽取标签
+        :return: 抽取的表格的list
+        """
         _tableList = []
         tagTable = _tag.find_all(name="table")
         for tag in tagTable:
@@ -377,6 +336,11 @@ class TableExtract:
 
     @staticmethod
     def extractListTable(tag: Tag) -> list:
+        """
+        从Tag中抽取列表
+        :param tag:带抽取标签
+        :return: 表格的list
+        """
         tableList = []
         titleList = tag.find_all(class_='normal title-td')
         ulList = tag.find_all("ul")
@@ -422,6 +386,12 @@ class TableExtract:
         return tableList
 
     def addQueue(self, QueueName: Queue, tableName: str):
+        """
+        从指定的数据库中抽取数据，补充到指定的队列
+        :param QueueName: 队列名
+        :param tableName: 数据表名
+        :return: 无
+        """
         # 队列长度小于一半，则从数据库中补充到队列
         if QueueName.qsize() < int(QueueName.maxsize / 10):
             urlAndHtml = self.sql.getUrlAndHtmlFromDB(tableName, int(QueueName.maxsize / 2))
@@ -430,6 +400,11 @@ class TableExtract:
             self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
 
     def addUrlList(self, url: str):
+        """
+        在url列表中添加一个表格。若url链接数量大于最大列表长度，则剔除第一个url，同时删除该url对应的本地文件
+        :param url: 待添加的url
+        :return: 无
+        """
         if len(self.urlList) >= self.maxSize:
             tempUrl = self.urlList[0]
             self.urlList = self.urlList[1:]
@@ -445,6 +420,14 @@ class TableExtract:
         self.urlList.append(url)
 
     def writeRecords(self, url: str, tableList: list, entityAndRelationshipList: list):
+        """
+        写下记录，将表格、实体和关系均存入到一个pkl文件中
+        :param url:当前的url链接
+        :param tableList: 表格的list
+        :param entityAndRelationshipList:实体和关系的list
+        :return: 无
+        """
+
         def getEListAndRList(ERLIst: list):
             entityList_ = []
             relationshipList_ = []
@@ -513,6 +496,7 @@ def getCaption(_tag: Tag):
                         else:
                             _caption = title.contents[0].text
 
+    # _caption = re.sub(u"\(.?\)|\\（.*?）|\\{.*?}|\\[.*?]|\\【.*?】||\\<.*?\\>", "", _caption)  # 去除括号
     return str(_caption)
 
 
@@ -554,8 +538,24 @@ def htmlPreTreat(_html: str):
 
 
 def writeER2Chart(entityList: list, relationshipList: list, filepath: str, title=''):
+    """
+    将实体和关系转化为关系图的html文件
+    :param entityList: 实体列表
+    :param relationshipList: 关系列表
+    :param filepath: html文件的绝对路径
+    :param title: 当前关系图的标题
+    :return: 无
+    """
+
     def change2NodeAndLink(entityList_: list, relationshipList_: list):
         def changeEList2NodeList(entityList__: list, url2NameDict__=None) -> list:
+            """
+            将实体列表转化为节点列表
+            :param entityList__: 实体列表
+            :param url2NameDict__: url:人名 的映射字典，用于去除重复
+            :return: 节点列表
+            """
+
             def dumpDict(ADict: dict) -> str:
                 string = ""
                 for key in ADict:
@@ -564,20 +564,31 @@ def writeER2Chart(entityList: list, relationshipList: list, filepath: str, title
 
             if url2NameDict__ is None:
                 url2NameDict__ = {}
+            NameSet = set()
             NodeList = []
 
             for entity in entityList__:
                 name = entity[0][0]
                 url = entity[0][1]
                 propertyDict = entity[1]
-                if url in url2NameDict__:
+                if len(url.strip()) != 0 and url in url2NameDict__:
                     continue
+                if name in NameSet:
+                    continue
+                else:
+                    NameSet.add(name)
                 newNode = GraphNode(name=name, symbol_size=30, value=[dumpDict(propertyDict)])
                 NodeList.append(newNode)
                 url2NameDict__[url] = name
             return NodeList
 
-        def changeRList2linkList(relationshipList_: list, url2NameDict_=None):
+        def changeRList2linkList(relationshipList_: list, url2NameDict_=None) -> list:
+            """
+            将关系列表转化为链接链表
+            :param relationshipList_:关系列表
+            :param url2NameDict_: url:人名 的映射字典，用于去除重复
+            :return: 链接列表
+            """
             if url2NameDict_ is None:
                 url2NameDict_ = {}
             linkList = []
@@ -587,9 +598,9 @@ def writeER2Chart(entityList: list, relationshipList: list, filepath: str, title
                 R = relationship[1]
                 name2 = str(relationship[2][0])
                 url2 = str(relationship[2][1])
-                if url1 in url2NameDict_:
+                if len(url1.strip()) != 0 and url1 in url2NameDict_:
                     name1 = url2NameDict_[url1]
-                if url2 in url2NameDict_:
+                if len(url2.strip()) != 0 and url2 in url2NameDict_:
                     name2 = url2NameDict_[url2]
                 newLink = GraphLink(source=name1, target=name2, value=R)
                 linkList.append(newLink)
@@ -603,6 +614,14 @@ def writeER2Chart(entityList: list, relationshipList: list, filepath: str, title
         return __nodes_data, __links_data
 
     def writeNodeAndLink2Html(nodes_data_: list, links_data_: list, filepath_: str, title_=''):
+        """
+        将节点和链接写入到html文件中，形成关系图
+        :param nodes_data_: 节点列表
+        :param links_data_: 链接列表
+        :param filepath_: html文件的绝对路径
+        :param title_: 关系图的标题
+        :return:无
+        """
         c = (
             Graph()
                 .add(

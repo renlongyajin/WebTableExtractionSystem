@@ -12,6 +12,12 @@ def except_output(msg='异常信息'):
     def except_execute(func):
         @wraps(func)
         def execept_print(*args, **kwargs):
+            """
+            打印异常信息，并且写入到日志文件中
+            :param args:参数字典
+            :param kwargs: 参数字典
+            :return: 无
+            """
             try:
                 return func(*args, **kwargs)
             except Exception as e:

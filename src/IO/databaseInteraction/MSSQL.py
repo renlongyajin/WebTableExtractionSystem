@@ -46,7 +46,7 @@ GO
 
 class SqlServerProcessor:
     def __init__(self, server: str = r"192.168.43.37",
-                 user=r"humenglong",
+                 user: str = r"humenglong",
                  password: str = "E=Mc2HMLZAZKN233",
                  database: str = "WebTable"):
         self.server = server  # 数据库服务器名称或IP
@@ -69,6 +69,12 @@ class SqlServerProcessor:
 
     @except_output()
     def writeUrlToDB(self, tableName: str, urlList: list):
+        """
+        将url列表插入到表格中
+        :param tableName: 要插入的表格名称
+        :param urlList: url列表
+        :return:
+        """
         if len(urlList) > 0:
             sql1 = f"INSERT INTO {tableName}(url) VALUES (?)"
             sql2 = f"SELECT COUNT(*) from {tableName} WITH(NOLock)"
@@ -93,6 +99,12 @@ class SqlServerProcessor:
 
     @except_output()
     def getUrlFromDB(self, tableName: str, limitNum: int) -> list:
+        """
+        从指定的数据表中获取限制数量的url链接
+        :param tableName: 表格名称
+        :param limitNum: 限制的数量
+        :return:
+        """
         res = []
         conn = self.__connect()
         if not conn:
@@ -113,6 +125,12 @@ class SqlServerProcessor:
 
     @except_output()
     def deleteFromDBWithIdNum(self, tableName: str, limitNum: int):
+        """
+        从指定的数据表中根据ID删除限制数量的数据行
+        :param tableName: 表格名称
+        :param limitNum: 限制数量
+        :return:
+        """
         conn = self.__connect()
         try:
             sql = f"DELETE {tableName} WHERE ID IN (SELECT TOP {limitNum} ID FROM {tableName})"
@@ -148,6 +166,13 @@ class SqlServerProcessor:
 
     @except_output()
     def writeUrlAndHtmlToDB(self, tableName: str, url: str, _html: str):
+        """
+        将url和对应的html写入到指定的数据表中
+        :param tableName: 数据表名称
+        :param url: url链接
+        :param _html: 对应的html文本
+        :return:
+        """
         if len(_html):
             conn = self.__connect()
             if not conn:
@@ -167,6 +192,13 @@ class SqlServerProcessor:
 
     @except_output()
     def writeER2DB(self, tableName: str, entityJson: str, relationshipJson: str):
+        """
+        将实体和关系的JSON串写入到指定的数据表之中
+        :param tableName: 表格名
+        :param entityJson: 实体JSON串
+        :param relationshipJson: 关系JSON串
+        :return:
+        """
         conn = self.__connect()
         if not conn:
             return
@@ -183,6 +215,12 @@ class SqlServerProcessor:
 
     @except_output()
     def getERFromDB(self, tableName: str, limitNum: int) -> list:
+        """
+        从指定数据表中获取实体和关系串
+        :param tableName: 表格名称
+        :param limitNum: 限制数量
+        :return: 返回一个列表，该列表中每个元素可以分为两个，第一个是实体字符串，第二个是关系字符串。
+        """
         res = []
         conn = self.__connect()
         if not conn:

@@ -9,6 +9,12 @@ class UrlExtractor:
                  HeadLink=r'https://baike.baidu.com',
                  DiscriminantHead=r'/item/',
                  RelevanceThreshold=0.8):
+        """
+        初始化函数
+        :param HeadLink:链接头，用以 根据相对路径 和 链接头 合并出需要的url
+        :param DiscriminantHead: 判别头，用以判别是否是百度百科里面的一项
+        :param RelevanceThreshold: 相关度阈值，当计算所得的相关度超过阈值时，可以认为链接具有相关性
+        """
         self.HeadLink = HeadLink  # 链接头，用以 根据相对路径 和 链接头 合并出需要的url
         self.DiscriminantHead = DiscriminantHead  # 判别头，用以判别是否是百度百科里面的一项
         self.RelevanceThreshold = RelevanceThreshold  # 相关度阈值，当计算所得的相关度超过阈值时，可以认为链接具有相关性
@@ -63,8 +69,8 @@ class UrlExtractor:
     def IsRelevant(self, url: str) -> bool:
         """
         # 判断当前链接是否是相关链接
-        :param url:
-        :return:
+        :param url:待判断的URL链接
+        :return:若有关返回True，无关则返回False
         """
         if self.CalculatingCorrelation(url) >= self.RelevanceThreshold:
             return True

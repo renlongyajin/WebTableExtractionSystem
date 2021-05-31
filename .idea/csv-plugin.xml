@@ -38,6 +38,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\file\tableExample\2维表格.html">
+          <value>
+            <Attribute>
+              <option name="separator" value=";" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\file\tableExample\等长等类型表格.html">
           <value>
             <Attribute>

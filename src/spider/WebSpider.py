@@ -21,6 +21,9 @@ from src.tools.algorithm.exceptionCatch import except_output
 
 class WebSpider:
     def __init__(self):
+        """
+        爬虫初始化函数
+        """
         self.queueLength = 5000  # 队列长度
         self.pendingQueue = Queue(self.queueLength)  # 待处理队列
         self.waitWriteQueue = Queue(self.queueLength)  # 等待写入的队列
@@ -93,7 +96,7 @@ class WebSpider:
         :param IsDealWithSeed: 是否处理种子文件
         :param threadsNum:线程数
         :param maxCount:最大爬取次数
-        :return:
+        :return:无
         """
         self.running = True
         requests.DEFAULT_RETRIES = 0  # 重试连接次数
@@ -109,9 +112,17 @@ class WebSpider:
         threading.Thread(target=self.dealWithUselessUrl).start()
 
     def stop(self):
+        """
+        爬虫停止运行
+        :return:
+        """
         self.running = False
 
     def dealWithSeed(self):
+        """
+        处理种子url链接
+        :return:
+        """
         self.readSeed(self.SeedPath)
         _urlExtractor = UrlExtractor()
         while not self.seedQueue.empty():
@@ -129,6 +140,11 @@ class WebSpider:
 
     @except_output()
     def startSpider(self, ID: int):
+        """
+        开启单线程爬虫
+        :param ID:当前爬虫的ID
+        :return: 无
+        """
         # url抽取器
         _urlExtractor = UrlExtractor()
         # BFS 广度优先遍历
@@ -171,6 +187,11 @@ class WebSpider:
                     self.addQueue(self.pendingQueue, "pendingUrl")
 
     def writeQueue2Database(self, tableName: str = "pendingUrl"):
+        """
+        将队列中的URL写入到指定的数据表之中，并清空队列
+        :param tableName:数据表
+        :return: 无
+        """
         while True:
             if not self.waitWriteQueue.empty():
                 urlList = list(self.waitWriteQueue.queue)
@@ -180,6 +201,11 @@ class WebSpider:
 
     @staticmethod
     def __getPossibleUrl(urlSet: set):
+        """
+        从url集合中获取与主题可能有关的url链接集合
+        :param urlSet:url集合
+        :return: 与主题可能有关的url链接集合
+        """
         newSet = set()
         for url in urlSet:
             url = str(url)
@@ -190,6 +216,12 @@ class WebSpider:
         return newSet
 
     def dealWithUselessUrl(self, maxWaitTimes=10000, maxQueueSize=5000):
+        """
+        开始处理无效的（与主题无关的）的url链接
+        :param maxWaitTimes: 处理的最大次数
+        :param maxQueueSize: 缓冲队列的最大长度
+        :return: 无
+        """
         print("开始处理无用url...")
         waitTimes = maxWaitTimes
         uselessUrlQueue = Queue(maxsize=maxQueueSize)
@@ -220,7 +252,7 @@ class WebSpider:
         """
         从布隆过滤器中获取当前url集合的差集列表
         :param urlSet: url集合
-        :return:
+        :return:差集列表
         """
         differenceUrlList = []
         for url in urlSet:
@@ -230,6 +262,12 @@ class WebSpider:
         return differenceUrlList
 
     def addQueue(self, QueueName: Queue, tableName: str):
+        """
+        从指定的数据表中读取数据补充到指定的队列中
+        :param QueueName: 指定的队列
+        :param tableName: 指定的数据表
+        :return: 无
+        """
         # 队列长度小于1/10，则从数据库中补充到队列
         if QueueName.qsize() < int(QueueName.maxsize / 10):
             urls = self.sql.getUrlFromDB(tableName, int(QueueName.maxsize / 2))
@@ -241,5 +279,8 @@ class WebSpider:
                 self.sql.deleteFromDBWithIdNum(tableName, int(QueueName.maxsize / 2))  # 删除
 
     def __del__(self):
-        # 析构时写回布隆过滤器
+        """
+        析构时写回布隆过滤器
+        :return:
+        """
         FileIO.writePkl(self.urlBloomPath, self.urlBloom)
