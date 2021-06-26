@@ -269,7 +269,7 @@ class TableExtract:
 
     def extractListTableWithRule1(self, tag: Tag, ruleDict: dict) -> list:
         """
-        按照规则1，从Tag抽取非规范表格
+        按照规则1，从Tag抽取非规范表格（不带有table标签的表格）
         :param tag:带抽取Tag
         :param ruleDict: 规则映射字典
         :return: 抽取的表格的list

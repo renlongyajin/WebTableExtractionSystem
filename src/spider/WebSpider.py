@@ -36,7 +36,7 @@ class WebSpider:
         self.spiderCount = 1  # 爬虫爬取次数
         self.writeUrlCount = 1  # 写入Url次数
         self.seedQueue = Queue()  # 种子队列
-        self.running = False
+        self.running = False  # 是否正在运行
         self.sql = SqlServerProcessor()
         if not os.path.exists(self.urlBloomPath):
             FileIO.writePkl(self.urlBloomPath, self.urlBloom)
@@ -161,7 +161,7 @@ class WebSpider:
                     return
                 self.spiderCount += 1
                 _html = self.getHtml(url=_url, timeout=1)
-                # 队列长度小于一半，则从数据库中补充到队列
+                # 则从数据库中补充url到队列
                 self.addQueue(QueueName=self.pendingQueue, tableName='pendingUrl')
                 if _html:
                     self.sql.writeUrlAndHtmlToDB(tableName="personUrlAndHtml", url=_url, _html=_html)
